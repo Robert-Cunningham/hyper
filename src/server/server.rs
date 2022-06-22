@@ -14,6 +14,7 @@ use super::accept::Accept;
 use super::tcp::AddrIncoming;
 use crate::body::{Body, HttpBody};
 use crate::common::exec::Exec;
+use crate::common::tim::Tim;
 use crate::common::exec::{ConnStreamExec, NewSvcExec};
 use crate::common::{task, Future, Pin, Poll, Unpin};
 // Renamed `Http` as `Http_` for now so that people upgrading don't see an
@@ -42,9 +43,9 @@ pin_project! {
 /// A builder for a [`Server`](Server).
 #[derive(Debug)]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-pub struct Builder<I, E = Exec> {
+pub struct Builder<I, E = Exec, T = Tim> {
     incoming: I,
-    protocol: Http_<E>,
+    protocol: Http_<E, T>,
 }
 
 // ===== impl Server =====
@@ -235,11 +236,11 @@ impl<I: fmt::Debug, S: fmt::Debug> fmt::Debug for Server<I, S> {
 // ===== impl Builder =====
 
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-impl<I, E> Builder<I, E> {
+impl<I, E, T> Builder<I, E, T> {
     /// Start a new builder, wrapping an incoming stream and low-level options.
     ///
     /// For a more convenient constructor, see [`Server::bind`](Server::bind).
-    pub fn new(incoming: I, protocol: Http_<E>) -> Self {
+    pub fn new(incoming: I, protocol: Http_<E, T>) -> Self {
         Builder { incoming, protocol }
     }
 
@@ -496,10 +497,20 @@ impl<I, E> Builder<I, E> {
     /// Sets the `Executor` to deal with connection tasks.
     ///
     /// Default is `tokio::spawn`.
-    pub fn executor<E2>(self, executor: E2) -> Builder<I, E2> {
+    pub fn executor<E2>(self, executor: E2) -> Builder<I, E2, T> {
         Builder {
             incoming: self.incoming,
             protocol: self.protocol.with_executor(executor),
+        }
+    }
+
+    /// Sets the `Timer` to deal with connection tasks.
+    ///
+    /// Default is `tokio::spawn`. // TODO: Robert
+    pub fn timer<T2>(self, timer: T2) -> Builder<I, E, T2> {
+        Builder {
+            incoming: self.incoming,
+            protocol: self.protocol.with_timer(timer),
         }
     }
 
@@ -558,7 +569,7 @@ impl<I, E> Builder<I, E> {
     docsrs,
     doc(cfg(all(feature = "tcp", any(feature = "http1", feature = "http2"))))
 )]
-impl<E> Builder<AddrIncoming, E> {
+impl<E, T> Builder<AddrIncoming, E, T> {
     /// Set whether TCP keepalive messages are enabled on accepted connections.
     ///
     /// If `None` is specified, keepalive is disabled, otherwise the duration
@@ -651,6 +662,8 @@ pub(crate) mod new_svc {
     //
     // Users cannot import this type, nor the associated `NewSvcExec`. Instead,
     // a blanket implementation for `Executor<impl Future>` is sufficient.
+
+    // TODO: Robert
 
     pin_project! {
         #[allow(missing_debug_implementations)]

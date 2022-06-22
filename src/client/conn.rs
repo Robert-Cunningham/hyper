@@ -71,17 +71,19 @@ use tower_service::Service;
 use tracing::{debug, trace};
 
 use super::dispatch;
-use crate::body::HttpBody;
 #[cfg(not(all(feature = "http1", feature = "http2")))]
 use crate::common::Never;
 use crate::common::{
     exec::{BoxSendFuture, Exec},
-    task, Future, Pin, Poll,
+    task,
+    timer::Tim,
+    Future, Pin, Poll,
 };
 use crate::proto;
-use crate::rt::Executor;
+use crate::rt::{Executor, Timer};
 #[cfg(feature = "http1")]
 use crate::upgrade::Upgraded;
+use crate::{body::HttpBody};
 use crate::{Body, Request, Response};
 
 #[cfg(feature = "http1")]
@@ -151,6 +153,7 @@ where
 #[derive(Clone, Debug)]
 pub struct Builder {
     pub(super) exec: Exec,
+    pub(super) tim: Tim,
     h09_responses: bool,
     h1_parser_config: ParserConfig,
     h1_writev: Option<bool>,
@@ -554,6 +557,7 @@ impl Builder {
     pub fn new() -> Builder {
         Builder {
             exec: Exec::Default,
+            tim: Tim::Default,
             h09_responses: false,
             h1_writev: None,
             h1_read_buf_exact_size: None,
@@ -580,6 +584,14 @@ impl Builder {
         E: Executor<BoxSendFuture> + Send + Sync + 'static,
     {
         self.exec = Exec::Executor(Arc::new(exec));
+        self
+    }
+
+    pub fn timer<T>(&mut self, tim: T) -> &mut Builder
+    where
+        T: Timer + Send + Sync + 'static,
+    {
+        self.tim = Tim::Timer(Arc::new(tim));
         self
     }
 

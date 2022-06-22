@@ -24,6 +24,7 @@ mod never;
 ))]
 pub(crate) mod sync_wrapper;
 pub(crate) mod task;
+pub(crate) mod tim;
 pub(crate) mod watch;
 
 #[cfg(all(feature = "client", any(feature = "http1", feature = "http2")))]

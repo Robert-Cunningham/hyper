@@ -53,6 +53,7 @@ use std::time::Duration;
 
 #[cfg(feature = "http2")]
 use crate::common::io::Rewind;
+use crate::common::timer::Tim;
 #[cfg(all(feature = "http1", feature = "http2"))]
 use crate::error::{Kind, Parse};
 #[cfg(feature = "http1")]
@@ -90,8 +91,9 @@ cfg_feature! {
 #[derive(Clone, Debug)]
 #[cfg(any(feature = "http1", feature = "http2"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-pub struct Http<E = Exec> {
+pub struct Http<E = Exec, T = Tim> {
     pub(crate) exec: E,
+    pub(crate) tim: T,
     h1_half_close: bool,
     h1_keep_alive: bool,
     h1_title_case_headers: bool,
@@ -231,6 +233,7 @@ impl Http {
     pub fn new() -> Http {
         Http {
             exec: Exec::Default,
+            tim: Tim::Default,
             h1_half_close: false,
             h1_keep_alive: true,
             h1_title_case_headers: false,
@@ -248,7 +251,7 @@ impl Http {
 }
 
 #[cfg(any(feature = "http1", feature = "http2"))]
-impl<E> Http<E> {
+impl<E, T> Http<E, T> {
     /// Sets whether HTTP1 is required.
     ///
     /// Default is false
@@ -324,7 +327,7 @@ impl<E> Http<E> {
         self
     }
 
-    /// Set a timeout for reading client request headers. If a client does not 
+    /// Set a timeout for reading client request headers. If a client does not
     /// transmit the entire header within this time, the connection is closed.
     ///
     /// Default is None.
@@ -557,9 +560,32 @@ impl<E> Http<E> {
     /// Set the executor used to spawn background tasks.
     ///
     /// Default uses implicit default (like `tokio::spawn`).
-    pub fn with_executor<E2>(self, exec: E2) -> Http<E2> {
+    pub fn with_executor<E2>(self, exec: E2) -> Http<E2, T> {
         Http {
             exec,
+            tim: self.tim,
+            h1_half_close: self.h1_half_close,
+            h1_keep_alive: self.h1_keep_alive,
+            h1_title_case_headers: self.h1_title_case_headers,
+            h1_preserve_header_case: self.h1_preserve_header_case,
+            #[cfg(all(feature = "http1", feature = "runtime"))]
+            h1_header_read_timeout: self.h1_header_read_timeout,
+            h1_writev: self.h1_writev,
+            #[cfg(feature = "http2")]
+            h2_builder: self.h2_builder,
+            mode: self.mode,
+            max_buf_size: self.max_buf_size,
+            pipeline_flush: self.pipeline_flush,
+        }
+    }
+
+    /// Set the timer used in background tasks.
+    ///
+    /// Default uses implicit default (like `tokio::spawn`). // TODO: Robert
+    pub fn with_timer<T2>(self, tim: T2) -> Http<E, T2> {
+        Http {
+            exec: self.exec,
+            tim: tim,
             h1_half_close: self.h1_half_close,
             h1_keep_alive: self.h1_keep_alive,
             h1_title_case_headers: self.h1_title_case_headers,
@@ -814,7 +840,12 @@ where
         let mut conn = Some(self);
         futures_util::future::poll_fn(move |cx| {
             ready!(conn.as_mut().unwrap().poll_without_shutdown(cx))?;
-            Poll::Ready(conn.take().unwrap().try_into_parts().ok_or_else(crate::Error::new_without_shutdown_not_h1))
+            Poll::Ready(
+                conn.take()
+                    .unwrap()
+                    .try_into_parts()
+                    .ok_or_else(crate::Error::new_without_shutdown_not_h1),
+            )
         })
     }
 

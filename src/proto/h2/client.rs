@@ -13,6 +13,7 @@ use tracing::{debug, trace, warn};
 
 use super::{ping, H2Upgraded, PipeToSendStream, SendBuf};
 use crate::body::HttpBody;
+use crate::common::timer::Tim;
 use crate::common::{exec::Exec, task, Future, Never, Pin, Poll};
 use crate::ext::Protocol;
 use crate::headers;
@@ -167,6 +168,7 @@ where
         ping,
         conn_drop_ref,
         conn_eof,
+        timer: Tim::Default,
         executor: exec,
         h2_tx,
         req_rx,
@@ -201,6 +203,7 @@ where
     conn_drop_ref: ConnDropRef,
     conn_eof: ConnEof,
     executor: Exec,
+    timer: Tim,
     h2_tx: SendRequest<SendBuf<B::Data>>,
     req_rx: ClientRx<B>,
 }
