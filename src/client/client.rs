@@ -12,14 +12,16 @@ use tracing::{debug, trace, warn};
 
 use super::conn;
 use super::connect::{self, sealed::Connect, Alpn, Connected, Connection};
-use super::pool::{
-    self, CheckoutIsClosedError, Key as PoolKey, Pool, Poolable, Pooled, Reservation,
-};
+use super::pool::{self, CheckoutIsClosedError, Key as PoolKey, Pool, Poolable, Pooled, Reservation};
 #[cfg(feature = "tcp")]
 use super::HttpConnector;
 use crate::body::{Body, HttpBody};
-use crate::common::{exec::BoxSendFuture, sync_wrapper::SyncWrapper, lazy as hyper_lazy, task, Future, Lazy, Pin, Poll};
+use crate::common::{
+    exec::BoxSendFuture, lazy as hyper_lazy, sync_wrapper::SyncWrapper, task, Future, Lazy, Pin,
+    Poll,
+};
 use crate::rt::Executor;
+use crate::rt::Timer;
 
 /// A Client to make outgoing HTTP requests.
 ///
@@ -586,7 +588,7 @@ impl ResponseFuture {
         F: Future<Output = crate::Result<Response<Body>>> + Send + 'static,
     {
         Self {
-            inner: SyncWrapper::new(Box::pin(value))
+            inner: SyncWrapper::new(Box::pin(value)),
         }
     }
 
@@ -1316,6 +1318,15 @@ impl Builder {
         self
     }
 
+    /// Provide a timer to execute background `Connection` tasks.
+    pub fn timer<T>(&mut self, timer: T) -> &mut Self
+    where
+        T: Timer + Send + Sync + 'static,
+    {
+        self.conn_builder.timer(timer);
+        self
+    }
+
     /// Builder a client with this configuration and the default `HttpConnector`.
     #[cfg(feature = "tcp")]
     pub fn build_http<B>(&self) -> Client<HttpConnector, B>
@@ -1341,7 +1352,11 @@ impl Builder {
             config: self.client_config,
             conn_builder: self.conn_builder.clone(),
             connector,
-            pool: Pool::new(self.pool_config, &self.conn_builder.exec),
+            pool: Pool::new(
+                self.pool_config,
+                &self.conn_builder.exec,
+                &self.conn_builder.timer,
+            ),
         }
     }
 }

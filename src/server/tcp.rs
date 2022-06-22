@@ -4,10 +4,12 @@ use std::net::{SocketAddr, TcpListener as StdTcpListener};
 use std::time::Duration;
 
 use tokio::net::{TcpListener, TcpStream};
-use tokio::time::Sleep;
 use tracing::{debug, error, trace};
 
+use crate::common::tim::Tim;
 use crate::common::{task, Future, Pin, Poll};
+use crate::rt::Sleep;
+use crate::rt::Timer;
 
 use super::accept::Accept;
 
@@ -19,7 +21,8 @@ pub struct AddrIncoming {
     sleep_on_errors: bool,
     tcp_keepalive_timeout: Option<Duration>,
     tcp_nodelay: bool,
-    timeout: Option<Pin<Box<Sleep>>>,
+    timeout: Option<Pin<Box<dyn Sleep>>>,
+    timer: Tim,
 }
 
 impl AddrIncoming {
@@ -53,6 +56,7 @@ impl AddrIncoming {
             tcp_keepalive_timeout: None,
             tcp_nodelay: false,
             timeout: None,
+            timer: None,
         })
     }
 
@@ -130,7 +134,7 @@ impl AddrIncoming {
                         error!("accept error: {}", e);
 
                         // Sleep 1s.
-                        let mut timeout = Box::pin(tokio::time::sleep(Duration::from_secs(1)));
+                        let mut timeout = Box::into_pin(self.timer.sleep(Duration::from_secs(1)));
 
                         match timeout.as_mut().poll(cx) {
                             Poll::Ready(()) => {

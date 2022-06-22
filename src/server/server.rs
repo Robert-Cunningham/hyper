@@ -24,6 +24,8 @@ use crate::service::{HttpService, MakeServiceRef};
 
 use self::new_svc::NewSvcTask;
 
+use crate::rt::Timer;
+
 pin_project! {
     /// A listening HTTP server that accepts connections in both HTTP1 and HTTP2 by default.
     ///
@@ -503,6 +505,19 @@ impl<I, E> Builder<I, E> {
         }
     }
 
+    /// Sets the `Timer` to deal with connection tasks.
+    ///
+    /// Default is `tokio::spawn`. // TODO: Robert
+    pub fn timer<M>(self, timer: M) -> Builder<I, E>
+    where
+        M: Timer + Send + Sync + 'static,
+    {
+        Builder {
+            incoming: self.incoming,
+            protocol: self.protocol.with_timer(timer),
+        }
+    }
+
     /// Consume this `Builder`, creating a [`Server`](Server).
     ///
     /// # Example
@@ -651,6 +666,8 @@ pub(crate) mod new_svc {
     //
     // Users cannot import this type, nor the associated `NewSvcExec`. Instead,
     // a blanket implementation for `Executor<impl Future>` is sufficient.
+
+    // TODO: Robert
 
     pin_project! {
         #[allow(missing_debug_implementations)]

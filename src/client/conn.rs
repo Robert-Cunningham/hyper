@@ -76,10 +76,12 @@ use crate::body::HttpBody;
 use crate::common::Never;
 use crate::common::{
     exec::{BoxSendFuture, Exec},
-    task, Future, Pin, Poll,
+    task,
+    tim::Tim,
+    Future, Pin, Poll,
 };
 use crate::proto;
-use crate::rt::Executor;
+use crate::rt::{Executor, Timer};
 #[cfg(feature = "http1")]
 use crate::upgrade::Upgraded;
 use crate::{Body, Request, Response};
@@ -151,6 +153,7 @@ where
 #[derive(Clone, Debug)]
 pub struct Builder {
     pub(super) exec: Exec,
+    pub(super) timer: Tim,
     h09_responses: bool,
     h1_parser_config: ParserConfig,
     h1_writev: Option<bool>,
@@ -554,6 +557,7 @@ impl Builder {
     pub fn new() -> Builder {
         Builder {
             exec: Exec::Default,
+            timer: None,
             h09_responses: false,
             h1_writev: None,
             h1_read_buf_exact_size: None,
@@ -580,6 +584,15 @@ impl Builder {
         E: Executor<BoxSendFuture> + Send + Sync + 'static,
     {
         self.exec = Exec::Executor(Arc::new(exec));
+        self
+    }
+
+    /// Provide a tiemr to execute background tasks.
+    pub fn timer<T>(&mut self, timer: T) -> &mut Builder
+    where
+        T: Timer + Send + Sync + 'static,
+    {
+        self.timer = Some(Arc::new(timer));
         self
     }
 
@@ -955,7 +968,7 @@ impl Builder {
             let proto = match opts.version {
                 #[cfg(feature = "http1")]
                 Proto::Http1 => {
-                    let mut conn = proto::Conn::new(io);
+                    let mut conn = proto::Conn::new(io, opts.timer.clone());
                     conn.set_h1_parser_config(opts.h1_parser_config);
                     if let Some(writev) = opts.h1_writev {
                         if writev {
@@ -994,7 +1007,7 @@ impl Builder {
                 #[cfg(feature = "http2")]
                 Proto::Http2 => {
                     let h2 =
-                        proto::h2::client::handshake(io, rx, &opts.h2_builder, opts.exec.clone())
+                        proto::h2::client::handshake(io, rx, &opts.h2_builder, opts.exec.clone(), opts.timer.clone())
                             .await?;
                     ProtoClient::H2 { h2 }
                 }

@@ -9,9 +9,9 @@ use std::mem::MaybeUninit;
 use std::time::Duration;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 #[cfg(all(feature = "server", feature = "runtime"))]
-use tokio::time::Instant;
+use std::time::Instant;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tracing::{debug, trace};
 
 use super::{Http1Transaction, ParseContext, ParsedMessage};
@@ -187,6 +187,8 @@ where
                     cached_headers: parse_ctx.cached_headers,
                     req_method: parse_ctx.req_method,
                     h1_parser_config: parse_ctx.h1_parser_config.clone(),
+                    #[cfg(all(feature = "server", feature = "runtime"))]
+                    timer: parse_ctx.timer.clone(),
                     #[cfg(all(feature = "server", feature = "runtime"))]
                     h1_header_read_timeout: parse_ctx.h1_header_read_timeout,
                     #[cfg(all(feature = "server", feature = "runtime"))]
@@ -675,8 +677,7 @@ enum WriteStrategy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
-
+    use std::{time::Duration};
     use tokio_test::io::Builder as Mock;
 
     // #[cfg(feature = "nightly")]
@@ -734,6 +735,7 @@ mod tests {
             let parse_ctx = ParseContext {
                 cached_headers: &mut None,
                 req_method: &mut None,
+                timer: None,
                 h1_parser_config: Default::default(),
                 #[cfg(feature = "runtime")]
                 h1_header_read_timeout: None,

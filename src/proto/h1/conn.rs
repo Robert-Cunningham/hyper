@@ -9,16 +9,16 @@ use http::header::{HeaderValue, CONNECTION};
 use http::{HeaderMap, Method, Version};
 use httparse::ParserConfig;
 use tokio::io::{AsyncRead, AsyncWrite};
-#[cfg(all(feature = "server", feature = "runtime"))]
-use tokio::time::Sleep;
 use tracing::{debug, error, trace};
 
 use super::io::Buffered;
 use super::{Decoder, Encode, EncodedBuf, Encoder, Http1Transaction, ParseContext, Wants};
 use crate::body::DecodedLength;
+use crate::common::tim::Tim;
 use crate::common::{task, Pin, Poll, Unpin};
 use crate::headers::connection_keep_alive;
 use crate::proto::{BodyLength, MessageHead};
+use crate::rt::Sleep;
 
 const H2_PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
@@ -41,7 +41,8 @@ where
     B: Buf,
     T: Http1Transaction,
 {
-    pub(crate) fn new(io: I) -> Conn<I, B, T> {
+    pub(crate) fn new(io: I, timer: Tim) -> Conn<I, B, T> {
+
         Conn {
             io: Buffered::new(io),
             state: State {
@@ -51,6 +52,8 @@ where
                 keep_alive: KA::Busy,
                 method: None,
                 h1_parser_config: ParserConfig::default(),
+                #[cfg(all(feature = "server", feature = "runtime"))]
+                timer: timer,
                 #[cfg(all(feature = "server", feature = "runtime"))]
                 h1_header_read_timeout: None,
                 #[cfg(all(feature = "server", feature = "runtime"))]
@@ -196,6 +199,8 @@ where
                 cached_headers: &mut self.state.cached_headers,
                 req_method: &mut self.state.method,
                 h1_parser_config: self.state.h1_parser_config.clone(),
+                #[cfg(all(feature = "server", feature = "runtime"))]
+                timer: self.state.timer.clone(),
                 #[cfg(all(feature = "server", feature = "runtime"))]
                 h1_header_read_timeout: self.state.h1_header_read_timeout,
                 #[cfg(all(feature = "server", feature = "runtime"))]
@@ -818,9 +823,11 @@ struct State {
     method: Option<Method>,
     h1_parser_config: ParserConfig,
     #[cfg(all(feature = "server", feature = "runtime"))]
+    timer: Tim,
+    #[cfg(all(feature = "server", feature = "runtime"))]
     h1_header_read_timeout: Option<Duration>,
     #[cfg(all(feature = "server", feature = "runtime"))]
-    h1_header_read_timeout_fut: Option<Pin<Box<Sleep>>>,
+    h1_header_read_timeout_fut: Option<Pin<Box<dyn Sleep>>>,
     #[cfg(all(feature = "server", feature = "runtime"))]
     h1_header_read_timeout_running: bool,
     preserve_header_case: bool,
@@ -1046,6 +1053,8 @@ mod tests {
     #[cfg(feature = "nightly")]
     #[bench]
     fn bench_read_head_short(b: &mut ::test::Bencher) {
+        tokio::time::sleep(Duration::from_micros(30));
+
         use super::*;
         let s = b"GET / HTTP/1.1\r\nHost: localhost:8080\r\n\r\n";
         let len = s.len();
@@ -1053,7 +1062,7 @@ mod tests {
 
         // an empty IO, we'll be skipping and using the read buffer anyways
         let io = tokio_test::io::Builder::new().build();
-        let mut conn = Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(io);
+        let mut conn = Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(io, None);
         *conn.io.read_buf_mut() = ::bytes::BytesMut::from(&s[..]);
         conn.state.cached_headers = Some(HeaderMap::with_capacity(2));
 

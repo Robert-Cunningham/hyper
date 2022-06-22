@@ -26,13 +26,14 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::{TcpListener, TcpStream as TkTcpStream};
 
 use hyper::body::HttpBody as _;
-use hyper::client::Client;
+use hyper::client::{Client, HttpConnector};
 use hyper::server::conn::Http;
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, StatusCode, Version};
 
 mod support;
+use support::TokioTimer;
 
 #[test]
 fn get_should_ignore_body() {
@@ -330,6 +331,7 @@ mod response_body_lengths {
 
         let client = Client::builder()
             .http2_only(true)
+            .timer(TokioTimer)
             .build_http::<hyper::Body>();
         let uri = addr_str
             .parse::<hyper::Uri>()
@@ -352,6 +354,7 @@ mod response_body_lengths {
             .body("Hello, World!");
 
         let client = Client::builder()
+            .timer(TokioTimer)
             .http2_only(true)
             .build_http::<hyper::Body>();
         let uri = addr_str
@@ -372,6 +375,7 @@ mod response_body_lengths {
         server.reply();
 
         let client = Client::builder()
+            .timer(TokioTimer)
             .http2_only(true)
             .build_http::<hyper::Body>();
         let uri = addr_str
@@ -968,6 +972,7 @@ async fn expect_continue_waits_for_body_poll() {
     let (socket, _) = listener.accept().await.expect("accept");
 
     Http::new()
+        .with_timer(TokioTimer)
         .serve_connection(
             socket,
             service_fn(|req| {
@@ -1142,7 +1147,9 @@ async fn disable_keep_alive_mid_request() {
     });
 
     let (socket, _) = listener.accept().await.unwrap();
-    let srv = Http::new().serve_connection(socket, HelloWorld);
+    let srv = Http::new()
+        .with_timer(TokioTimer)
+        .serve_connection(socket, HelloWorld);
     future::try_select(srv, rx1)
         .then(|r| match r {
             Ok(Either::Left(_)) => panic!("expected rx first"),
@@ -1195,7 +1202,9 @@ async fn disable_keep_alive_post_request() {
         stream: socket,
         _debug: dropped2,
     };
-    let server = Http::new().serve_connection(transport, HelloWorld);
+    let server = Http::new()
+        .with_timer(TokioTimer)
+        .serve_connection(transport, HelloWorld);
     let fut = future::try_select(server, rx1).then(|r| match r {
         Ok(Either::Left(_)) => panic!("expected rx first"),
         Ok(Either::Right(((), mut conn))) => {
@@ -1224,6 +1233,7 @@ async fn empty_parse_eof_does_not_return_error() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .serve_connection(socket, HelloWorld)
         .await
         .expect("empty parse eof is ok");
@@ -1241,6 +1251,7 @@ async fn nonempty_parse_eof_returns_error() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .serve_connection(socket, HelloWorld)
         .await
         .expect_err("partial parse eof is error");
@@ -1266,6 +1277,7 @@ async fn http1_allow_half_close() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .http1_half_close(true)
         .serve_connection(
             socket,
@@ -1294,6 +1306,7 @@ async fn disconnect_after_reading_request_before_responding() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .http1_half_close(false)
         .serve_connection(
             socket,
@@ -1326,6 +1339,7 @@ async fn returning_1xx_response_is_error() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .serve_connection(
             socket,
             service_fn(|_| async move {
@@ -1391,6 +1405,7 @@ async fn header_read_timeout_slow_writes() {
 
     let (socket, _) = listener.accept().await.unwrap();
     let conn = Http::new()
+        .with_timer(TokioTimer)
         .http1_header_read_timeout(Duration::from_secs(5))
         .serve_connection(
             socket,
@@ -1466,6 +1481,7 @@ async fn header_read_timeout_slow_writes_multiple_requests() {
 
     let (socket, _) = listener.accept().await.unwrap();
     let conn = Http::new()
+        .with_timer(TokioTimer)
         .http1_header_read_timeout(Duration::from_secs(5))
         .serve_connection(
             socket,
@@ -1644,6 +1660,7 @@ async fn upgrades_new() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .serve_connection(socket, svc)
         .with_upgrades()
         .await
@@ -1679,13 +1696,15 @@ async fn upgrades_ignored() {
 
         let (socket, _) = listener.accept().await.unwrap();
         Http::new()
+            .with_timer(TokioTimer)
             .serve_connection(socket, svc)
             .with_upgrades()
             .await
             .expect("server task");
     });
 
-    let client = hyper::Client::new();
+    //let client = hyper::Client::new();
+    let client = hyper::Client::builder().timer(TokioTimer).build_http();
     let url = format!("http://{}/", addr);
 
     let make_req = || {
@@ -1750,6 +1769,7 @@ async fn http_connect_new() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .serve_connection(socket, svc)
         .with_upgrades()
         .await
@@ -1834,6 +1854,7 @@ async fn h2_connect() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .http2_only(true)
         .serve_connection(socket, svc)
         .with_upgrades()
@@ -1946,6 +1967,7 @@ async fn h2_connect_multiplex() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .http2_only(true)
         .serve_connection(socket, svc)
         .with_upgrades()
@@ -2023,6 +2045,7 @@ async fn h2_connect_large_body() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .http2_only(true)
         .serve_connection(socket, svc)
         .with_upgrades()
@@ -2097,6 +2120,7 @@ async fn h2_connect_empty_frames() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .http2_only(true)
         .serve_connection(socket, svc)
         .with_upgrades()
@@ -2121,6 +2145,7 @@ async fn parse_errors_send_4xx_response() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .serve_connection(socket, HelloWorld)
         .await
         .expect_err("HTTP parse error");
@@ -2144,6 +2169,7 @@ async fn illegal_request_length_returns_400_response() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .serve_connection(socket, HelloWorld)
         .await
         .expect_err("illegal Content-Length should error");
@@ -2186,6 +2212,7 @@ async fn max_buf_size() {
 
     let (socket, _) = listener.accept().await.unwrap();
     Http::new()
+        .with_timer(TokioTimer)
         .max_buf_size(MAX)
         .serve_connection(socket, HelloWorld)
         .await
@@ -2227,7 +2254,7 @@ fn http1_response_with_http2_version() {
     server.reply().version(hyper::Version::HTTP_2);
 
     rt.block_on({
-        let client = Client::new();
+        let client: Client<HttpConnector, Body> = Client::builder().timer(TokioTimer).build_http();
         let uri = addr_str.parse().expect("server addr should parse");
         client.get(uri)
     })
@@ -2243,6 +2270,7 @@ fn try_h2() {
 
     rt.block_on({
         let client = Client::builder()
+            .timer(TokioTimer)
             .http2_only(true)
             .build_http::<hyper::Body>();
         let uri = addr_str.parse().expect("server addr should parse");
@@ -2263,6 +2291,7 @@ fn http1_only() {
 
     rt.block_on({
         let client = Client::builder()
+            .timer(TokioTimer)
             .http2_only(true)
             .build_http::<hyper::Body>();
         let uri = addr_str.parse().expect("server addr should parse");
@@ -2285,6 +2314,7 @@ async fn http2_service_error_sends_reset_reason() {
     let uri = addr_str.parse().expect("server addr should parse");
     dbg!("start");
     let err = dbg!(Client::builder()
+        .timer(TokioTimer)
         .http2_only(true)
         .build_http::<hyper::Body>()
         .get(uri)
@@ -2319,6 +2349,7 @@ fn http2_body_user_error_sends_reset_reason() {
     let err: hyper::Error = rt
         .block_on(async move {
             let client = Client::builder()
+                .timer(TokioTimer)
                 .http2_only(true)
                 .build_http::<hyper::Body>();
             let uri = addr_str.parse().expect("server addr should parse");
@@ -2381,6 +2412,7 @@ async fn http2_service_poll_ready_error_sends_goaway() {
 
     let uri = addr_str.parse().expect("server addr should parse");
     let err = dbg!(Client::builder()
+        .timer(TokioTimer)
         .http2_only(true)
         .build_http::<hyper::Body>()
         .get(uri)
@@ -2507,6 +2539,7 @@ async fn http2_keep_alive_detects_unresponsive_client() {
     let (socket, _) = listener.accept().await.expect("accept");
 
     let err = Http::new()
+        .with_timer(TokioTimer)
         .http2_only(true)
         .http2_keep_alive_interval(Duration::from_secs(1))
         .http2_keep_alive_timeout(Duration::from_secs(1))
@@ -2528,6 +2561,7 @@ async fn http2_keep_alive_with_responsive_client() {
         let (socket, _) = listener.accept().await.expect("accept");
 
         Http::new()
+            .with_timer(TokioTimer)
             .http2_only(true)
             .http2_keep_alive_interval(Duration::from_secs(1))
             .http2_keep_alive_timeout(Duration::from_secs(1))
@@ -2539,6 +2573,7 @@ async fn http2_keep_alive_with_responsive_client() {
     let tcp = connect_async(addr).await;
     let (mut client, conn) = hyper::client::conn::Builder::new()
         .http2_only(true)
+        .timer(TokioTimer)
         .handshake::<_, Body>(tcp)
         .await
         .expect("http handshake");
@@ -2594,13 +2629,14 @@ async fn http2_keep_alive_count_server_pings() {
     tokio::spawn(async move {
         let (socket, _) = listener.accept().await.expect("accept");
 
-        Http::new()
+        let http = Http::new()
+            .with_timer(TokioTimer)
             .http2_only(true)
             .http2_keep_alive_interval(Duration::from_secs(1))
             .http2_keep_alive_timeout(Duration::from_secs(1))
-            .serve_connection(socket, unreachable_service())
-            .await
-            .expect("serve_connection");
+            .serve_connection(socket, unreachable_service());
+
+        http.await.expect("serve_connection");
     });
 
     // Spawn a "client" conn that only reads until EOF

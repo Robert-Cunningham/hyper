@@ -13,8 +13,10 @@ use futures_util::future::Either;
 use http::uri::{Scheme, Uri};
 use pin_project_lite::pin_project;
 use tokio::net::{TcpSocket, TcpStream};
-use tokio::time::Sleep;
 use tracing::{debug, trace, warn};
+
+use crate::common::tim::{Tim, timeout};
+use crate::rt::{Sleep, Timer};
 
 use super::dns::{self, resolve, GaiResolver, Resolve};
 use super::{Connected, Connection};
@@ -33,6 +35,7 @@ use super::{Connected, Connection};
 pub struct HttpConnector<R = GaiResolver> {
     config: Arc<Config>,
     resolver: R,
+    timer: Tim,
 }
 
 /// Extra information about the transport when an HttpConnector is used.
@@ -123,7 +126,13 @@ impl<R> HttpConnector<R> {
                 recv_buffer_size: None,
             }),
             resolver,
+            timer: None,
         }
+    }
+
+    /// Provide a timer to run background tasks.
+    pub fn set_timer<T: Timer + Send + Sync + 'static>(&mut self, timer: T) {
+        self.timer = Some(Arc::new(timer)); 
     }
 
     /// Option to enforce all `Uri`s have the `http` scheme.
@@ -346,7 +355,7 @@ where
             dns::SocketAddrs::new(addrs)
         };
 
-        let c = ConnectingTcp::new(addrs, config);
+        let c = ConnectingTcp::new(addrs, config, self.timer.clone());
 
         let sock = c.connect().await?;
 
@@ -362,7 +371,10 @@ impl Connection for TcpStream {
     fn connected(&self) -> Connected {
         let connected = Connected::new();
         if let (Ok(remote_addr), Ok(local_addr)) = (self.peer_addr(), self.local_addr()) {
-            connected.extra(HttpInfo { remote_addr, local_addr })
+            connected.extra(HttpInfo {
+                remote_addr,
+                local_addr,
+            })
         } else {
             connected
         }
@@ -479,23 +491,32 @@ struct ConnectingTcp<'a> {
 }
 
 impl<'a> ConnectingTcp<'a> {
-    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config) -> Self {
+    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config, timer: Tim) -> Self {
         if let Some(fallback_timeout) = config.happy_eyeballs_timeout {
             let (preferred_addrs, fallback_addrs) = remote_addrs
                 .split_by_preference(config.local_address_ipv4, config.local_address_ipv6);
             if fallback_addrs.is_empty() {
                 return ConnectingTcp {
-                    preferred: ConnectingTcpRemote::new(preferred_addrs, config.connect_timeout),
+                    preferred: ConnectingTcpRemote::new(
+                        preferred_addrs,
+                        config.connect_timeout,
+                    ),
                     fallback: None,
                     config,
                 };
             }
 
             ConnectingTcp {
-                preferred: ConnectingTcpRemote::new(preferred_addrs, config.connect_timeout),
+                preferred: ConnectingTcpRemote::new(
+                    preferred_addrs,
+                    config.connect_timeout,
+                ),
                 fallback: Some(ConnectingTcpFallback {
-                    delay: tokio::time::sleep(fallback_timeout),
-                    remote: ConnectingTcpRemote::new(fallback_addrs, config.connect_timeout),
+                    delay: timer.clone().sleep(fallback_timeout),
+                    remote: ConnectingTcpRemote::new(
+                        fallback_addrs,
+                        config.connect_timeout,
+                    ),
                 }),
                 config,
             }
@@ -510,22 +531,24 @@ impl<'a> ConnectingTcp<'a> {
 }
 
 struct ConnectingTcpFallback {
-    delay: Sleep,
+    delay: Box<dyn Sleep + Unpin>,
     remote: ConnectingTcpRemote,
 }
 
 struct ConnectingTcpRemote {
     addrs: dns::SocketAddrs,
     connect_timeout: Option<Duration>,
+    //timer: Tim,
 }
 
 impl ConnectingTcpRemote {
-    fn new(addrs: dns::SocketAddrs, connect_timeout: Option<Duration>) -> Self {
+    fn new(addrs: dns::SocketAddrs, connect_timeout: Option<Duration>/* , timer: Tim */) -> Self {
         let connect_timeout = connect_timeout.map(|t| t / (addrs.len() as u32));
 
         Self {
             addrs,
             connect_timeout,
+            //timer,
         }
     }
 }
@@ -661,7 +684,7 @@ fn connect(
     let connect = socket.connect(*addr);
     Ok(async move {
         match connect_timeout {
-            Some(dur) => match tokio::time::timeout(dur, connect).await {
+            Some(dur) => match timeout(dur, connect).await { // TODO(robert)
                 Ok(Ok(s)) => Ok(s),
                 Ok(Err(e)) => Err(e),
                 Err(e) => Err(io::Error::new(io::ErrorKind::TimedOut, e)),
@@ -943,7 +966,8 @@ mod tests {
                         send_buffer_size: None,
                         recv_buffer_size: None,
                     };
-                    let connecting_tcp = ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg);
+                    let connecting_tcp =
+                        ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg, None);
                     let start = Instant::now();
                     Ok::<_, ConnectError>((start, ConnectingTcp::connect(connecting_tcp).await?))
                 })

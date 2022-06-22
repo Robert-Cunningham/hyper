@@ -20,6 +20,8 @@ use futures_util::future::{self, FutureExt, TryFutureExt};
 use tokio::net::TcpStream;
 mod support;
 
+use support::TokioTimer;
+
 fn s(buf: &[u8]) -> &str {
     std::str::from_utf8(buf).expect("from_utf8")
 }
@@ -148,9 +150,11 @@ macro_rules! test {
         let addr = server.local_addr().expect("local_addr");
         let rt = $runtime;
 
-        let connector = ::hyper::client::HttpConnector::new();
+        let mut connector = ::hyper::client::HttpConnector::new();
+        connector.set_timer(TokioTimer);
         let client = Client::builder()
             $($(.$c_opt_prop($c_opt_val))*)?
+            .timer(TokioTimer)
             .build(connector);
 
         #[allow(unused_assignments, unused_mut)]
@@ -1136,10 +1140,9 @@ mod dispatch_impl {
         let addr = server.local_addr().unwrap();
         let rt = support::runtime();
         let (closes_tx, closes) = mpsc::channel(10);
-        let client = Client::builder().build(DebugConnector::with_http_and_closes(
-            HttpConnector::new(),
-            closes_tx,
-        ));
+        let mut http = HttpConnector::new();
+        http.set_timer(TokioTimer);
+        let client = Client::builder().build(DebugConnector::with_http_and_closes(http, closes_tx));
 
         let (tx1, rx1) = oneshot::channel();
 
@@ -1208,11 +1211,11 @@ mod dispatch_impl {
             let _ = tx1.send(());
         });
 
+        let mut http = HttpConnector::new();
+        http.set_timer(TokioTimer);
         let res = {
-            let client = Client::builder().build(DebugConnector::with_http_and_closes(
-                HttpConnector::new(),
-                closes_tx,
-            ));
+            let client =
+                Client::builder().build(DebugConnector::with_http_and_closes(http, closes_tx));
 
             let req = Request::builder()
                 .uri(&*format!("http://{}/a", addr))
@@ -1272,10 +1275,11 @@ mod dispatch_impl {
             support::runtime().block_on(client_drop_rx.into_future())
         });
 
-        let client = Client::builder().build(DebugConnector::with_http_and_closes(
-            HttpConnector::new(),
-            closes_tx,
-        ));
+        let mut http = HttpConnector::new();
+        http.set_timer(TokioTimer);
+        let client = Client::builder()
+            .timer(TokioTimer)
+            .build(DebugConnector::with_http_and_closes(http, closes_tx));
 
         let req = Request::builder()
             .uri(&*format!("http://{}/a", addr))
@@ -1334,11 +1338,12 @@ mod dispatch_impl {
             let _ = client_drop_rx.recv();
         });
 
+        let mut http = HttpConnector::new();
+        http.set_timer(TokioTimer);
+
         let res = {
-            let client = Client::builder().build(DebugConnector::with_http_and_closes(
-                HttpConnector::new(),
-                closes_tx,
-            ));
+            let client =
+                Client::builder().build(DebugConnector::with_http_and_closes(http, closes_tx));
 
             let req = Request::builder()
                 .uri(&*format!("http://{}/a", addr))
@@ -1387,11 +1392,11 @@ mod dispatch_impl {
         });
 
         let rx = rx1.expect("thread panicked");
+        let mut http = HttpConnector::new();
+        http.set_timer(TokioTimer);
         let res = {
-            let client = Client::builder().build(DebugConnector::with_http_and_closes(
-                HttpConnector::new(),
-                closes_tx,
-            ));
+            let client =
+                Client::builder().build(DebugConnector::with_http_and_closes(http, closes_tx));
 
             let req = Request::builder()
                 .uri(&*format!("http://{}/a", addr))
@@ -1486,10 +1491,9 @@ mod dispatch_impl {
             let _ = tx1.send(());
         });
 
-        let client = Client::builder().build(DebugConnector::with_http_and_closes(
-            HttpConnector::new(),
-            closes_tx,
-        ));
+        let mut http = HttpConnector::new();
+        http.set_timer(TokioTimer);
+        let client = Client::builder().build(DebugConnector::with_http_and_closes(http, closes_tx));
 
         let req = Request::builder()
             .uri(&*format!("http://{}/a", addr))
@@ -1520,7 +1524,7 @@ mod dispatch_impl {
         let connector = DebugConnector::new();
         let connects = connector.connects.clone();
 
-        let client = Client::builder().build(connector);
+        let client = Client::builder().timer(TokioTimer).build(connector);
 
         assert_eq!(connects.load(Ordering::Relaxed), 0);
         let req = Request::builder()
@@ -1542,7 +1546,7 @@ mod dispatch_impl {
         let connector = DebugConnector::new();
         let connects = connector.connects.clone();
 
-        let client = Client::builder().build(connector);
+        let client = Client::builder().timer(TokioTimer).build(connector);
 
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
@@ -1609,7 +1613,7 @@ mod dispatch_impl {
         let connector = DebugConnector::new();
         let connects = connector.connects.clone();
 
-        let client = Client::builder().build(connector);
+        let client = Client::builder().timer(TokioTimer).build(connector);
 
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
@@ -1671,7 +1675,7 @@ mod dispatch_impl {
         let connector = DebugConnector::new();
         let connects = connector.connects.clone();
 
-        let client = Client::builder().build(connector);
+        let client = Client::builder().timer(TokioTimer).build(connector);
 
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
@@ -1747,7 +1751,7 @@ mod dispatch_impl {
         let connector = DebugConnector::new();
         let connects = connector.connects.clone();
 
-        let client = Client::builder().build(connector);
+        let client = Client::builder().timer(TokioTimer).build(connector);
 
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
@@ -1831,7 +1835,7 @@ mod dispatch_impl {
         let rt = support::runtime();
         let connector = DebugConnector::new().proxy();
 
-        let client = Client::builder().build(connector);
+        let client = Client::builder().timer(TokioTimer).build(connector);
 
         let (tx1, rx1) = oneshot::channel();
         thread::spawn(move || {
@@ -1870,7 +1874,7 @@ mod dispatch_impl {
         let rt = support::runtime();
         let connector = DebugConnector::new().proxy();
 
-        let client = Client::builder().build(connector);
+        let client = Client::builder().timer(TokioTimer).build(connector);
 
         let (tx1, rx1) = oneshot::channel();
         thread::spawn(move || {
@@ -1913,7 +1917,7 @@ mod dispatch_impl {
 
         let connector = DebugConnector::new();
 
-        let client = Client::builder().build(connector);
+        let client = Client::builder().timer(TokioTimer).build(connector);
 
         let (tx1, rx1) = oneshot::channel();
         thread::spawn(move || {
@@ -1980,11 +1984,14 @@ mod dispatch_impl {
         connector.alpn_h2 = true;
         let connects = connector.connects.clone();
 
-        let client = Client::builder().build::<_, ::hyper::Body>(connector);
+        let client = Client::builder()
+            .timer(TokioTimer)
+            .build::<_, ::hyper::Body>(connector);
 
         rt.spawn(async move {
             let (socket, _addr) = listener.accept().await.expect("accept");
             Http::new()
+                .with_timer(TokioTimer)
                 .http2_only(true)
                 .serve_connection(
                     socket,
@@ -2044,7 +2051,8 @@ mod dispatch_impl {
 
     impl DebugConnector {
         fn new() -> DebugConnector {
-            let http = HttpConnector::new();
+            let mut http = HttpConnector::new();
+            http.set_timer(TokioTimer);
             let (tx, _) = mpsc::channel(10);
             DebugConnector::with_http_and_closes(http, tx)
         }
@@ -2168,6 +2176,8 @@ mod conn {
     use hyper::client::conn;
     use hyper::{self, Body, Method, Request, Response, StatusCode};
 
+    use crate::support::TokioTimer;
+
     use super::{concat, s, support, tcp_connect, FutureHyperExt};
 
     #[tokio::test]
@@ -2242,6 +2252,7 @@ mod conn {
             let tcp = tcp_connect(&addr).await.expect("connect");
             let (mut client, conn) = conn::Builder::new()
                 .http1_allow_obsolete_multiline_headers_in_responses(true)
+                .timer(TokioTimer)
                 .handshake::<_, Body>(tcp)
                 .await
                 .expect("handshake");
@@ -2777,6 +2788,7 @@ mod conn {
         let io = tcp_connect(&addr).await.expect("tcp connect");
         let (mut client, conn) = conn::Builder::new()
             .http2_only(true)
+            .timer(TokioTimer)
             .handshake::<_, Body>(io)
             .await
             .expect("http handshake");
@@ -2843,6 +2855,7 @@ mod conn {
             .http2_keep_alive_timeout(Duration::from_secs(1))
             // enable while idle since we aren't sending requests
             .http2_keep_alive_while_idle(true)
+            .timer(TokioTimer)
             .handshake::<_, Body>(io)
             .await
             .expect("http handshake");
@@ -2874,6 +2887,7 @@ mod conn {
             .http2_only(true)
             .http2_keep_alive_interval(Duration::from_secs(1))
             .http2_keep_alive_timeout(Duration::from_secs(1))
+            .timer(TokioTimer)
             .handshake::<_, Body>(io)
             .await
             .expect("http handshake");
@@ -2910,6 +2924,7 @@ mod conn {
             .http2_only(true)
             .http2_keep_alive_interval(Duration::from_secs(1))
             .http2_keep_alive_timeout(Duration::from_secs(1))
+            .timer(TokioTimer)
             .handshake::<_, Body>(io)
             .await
             .expect("http handshake");
@@ -2974,6 +2989,7 @@ mod conn {
             .http2_only(true)
             .http2_keep_alive_interval(Duration::from_secs(1))
             .http2_keep_alive_timeout(Duration::from_secs(1))
+            .timer(TokioTimer)
             .handshake::<_, Body>(io)
             .await
             .expect("http handshake");
@@ -3031,6 +3047,7 @@ mod conn {
         let io = tcp_connect(&addr).await.expect("tcp connect");
         let (mut client, conn) = conn::Builder::new()
             .http2_only(true)
+            .timer(TokioTimer)
             .handshake::<_, Body>(io)
             .await
             .expect("http handshake");
@@ -3087,6 +3104,7 @@ mod conn {
         let io = tcp_connect(&addr).await.expect("tcp connect");
         let (mut client, conn) = conn::Builder::new()
             .http2_only(true)
+            .timer(TokioTimer)
             .handshake::<_, Body>(io)
             .await
             .expect("http handshake");

@@ -28,13 +28,13 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{self, Poll};
 use std::time::Duration;
-#[cfg(not(feature = "runtime"))]
 use std::time::Instant;
 
 use h2::{Ping, PingPong};
-#[cfg(feature = "runtime")]
-use tokio::time::{Instant, Sleep};
 use tracing::{debug, trace};
+
+use crate::common::tim::Tim;
+use crate::rt::{Sleep, Timer};
 
 type WindowSize = u32;
 
@@ -42,7 +42,7 @@ pub(super) fn disabled() -> Recorder {
     Recorder { shared: None }
 }
 
-pub(super) fn channel(ping_pong: PingPong, config: Config) -> (Recorder, Ponger) {
+pub(super) fn channel(ping_pong: PingPong, config: Config, timer: Tim) -> (Recorder, Ponger) {
     debug_assert!(
         config.is_enabled(),
         "ping channel requires bdp or keep-alive config",
@@ -67,7 +67,7 @@ pub(super) fn channel(ping_pong: PingPong, config: Config) -> (Recorder, Ponger)
         interval,
         timeout: config.keep_alive_timeout,
         while_idle: config.keep_alive_while_idle,
-        timer: Box::pin(tokio::time::sleep(interval)),
+        timer: Box::into_pin(timer.sleep(interval)),
         state: KeepAliveState::Init,
     });
 
@@ -173,7 +173,7 @@ struct KeepAlive {
     while_idle: bool,
 
     state: KeepAliveState,
-    timer: Pin<Box<Sleep>>,
+    timer: Pin<Box<dyn Sleep>>,
 }
 
 #[cfg(feature = "runtime")]
@@ -328,7 +328,7 @@ impl Ponger {
                     }
                 }
 
-                if let Some(ref mut bdp) =  self.bdp {
+                if let Some(ref mut bdp) = self.bdp {
                     let bytes = locked.bytes.expect("bdp enabled implies bytes");
                     locked.bytes = Some(0); // reset
                     trace!("received BDP ack; bytes = {}, rtt = {:?}", bytes, rtt);
@@ -336,7 +336,7 @@ impl Ponger {
                     let update = bdp.calculate(bytes, rtt);
                     locked.next_bdp_at = Some(now + bdp.ping_delay);
                     if let Some(update) = update {
-                        return Poll::Ready(Ponged::SizeUpdate(update))
+                        return Poll::Ready(Ponged::SizeUpdate(update));
                     }
                 }
             }
