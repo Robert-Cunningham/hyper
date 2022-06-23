@@ -80,7 +80,7 @@ pin_project! {
         B: HttpBody,
     {
         exec: E,
-        tim: M,
+        timer: M,
         service: S,
         state: State<T, B>,
     }
@@ -120,7 +120,7 @@ where
         service: S,
         config: &Config,
         exec: E,
-        tim: M,
+        timer: M,
     ) -> Server<T, S, B, E, M> {
         let mut builder = h2::server::Builder::default();
         builder
@@ -157,7 +157,7 @@ where
 
         Server {
             exec,
-            tim,
+            timer,
             state: State::Handshaking {
                 ping_config,
                 hs: handshake,
@@ -207,7 +207,7 @@ where
                     let mut conn = ready!(Pin::new(hs).poll(cx).map_err(crate::Error::new_h2))?;
                     let ping = if ping_config.is_enabled() {
                         let pp = conn.ping_pong().expect("conn.ping_pong");
-                        Some(ping::channel(pp, ping_config.clone(), self.tim))
+                        Some(ping::channel(pp, ping_config.clone(), self.timer))
                     } else {
                         None
                     };

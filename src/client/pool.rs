@@ -81,7 +81,7 @@ struct PoolInner<T> {
     idle_interval_ref: Option<oneshot::Sender<crate::common::Never>>,
     #[cfg(feature = "runtime")]
     exec: Exec,
-    tim: Tim,
+    timer: Tim,
     timeout: Option<Duration>,
 }
 
@@ -102,7 +102,7 @@ impl Config {
 }
 
 impl<T> Pool<T> {
-    pub(super) fn new(config: Config, __exec: &Exec, tim: &Tim) -> Pool<T> {
+    pub(super) fn new(config: Config, __exec: &Exec, timer: &Tim) -> Pool<T> {
         let inner = if config.is_enabled() {
             Some(Arc::new(Mutex::new(PoolInner {
                 connecting: HashSet::new(),
@@ -113,7 +113,7 @@ impl<T> Pool<T> {
                 waiters: HashMap::new(),
                 #[cfg(feature = "runtime")]
                 exec: __exec.clone(),
-                tim: tim.clone(),
+                timer: timer.clone(),
                 timeout: config.idle_timeout,
             })))
         } else {
@@ -418,7 +418,7 @@ impl<T: Poolable> PoolInner<T> {
         };
 
         let interval = IdleTask {
-            interval: self.tim.interval(dur),
+            interval: self.timer.interval(dur),
             pool: WeakOpt::downgrade(pool_ref),
             pool_drop_notifier: rx,
         };

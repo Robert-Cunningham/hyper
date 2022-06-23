@@ -22,7 +22,7 @@ pub struct AddrIncoming {
     tcp_keepalive_timeout: Option<Duration>,
     tcp_nodelay: bool,
     timeout: Option<Pin<Box<dyn Sleep>>>,
-    tim: Tim,
+    timer: Tim,
 }
 
 impl AddrIncoming {
@@ -56,7 +56,7 @@ impl AddrIncoming {
             tcp_keepalive_timeout: None,
             tcp_nodelay: false,
             timeout: None,
-            tim: Tim::Default,
+            timer: Tim::Default,
         })
     }
 
@@ -134,7 +134,7 @@ impl AddrIncoming {
                         error!("accept error: {}", e);
 
                         // Sleep 1s.
-                        let mut timeout = Box::into_pin(self.tim.sleep(Duration::from_secs(1)));
+                        let mut timeout = Box::into_pin(self.timer.sleep(Duration::from_secs(1)));
 
                         match timeout.as_mut().poll(cx) {
                             Poll::Ready(()) => {

@@ -188,6 +188,8 @@ where
                     req_method: parse_ctx.req_method,
                     h1_parser_config: parse_ctx.h1_parser_config.clone(),
                     #[cfg(all(feature = "server", feature = "runtime"))]
+                    timer: parse_ctx.timer,
+                    #[cfg(all(feature = "server", feature = "runtime"))]
                     h1_header_read_timeout: parse_ctx.h1_header_read_timeout,
                     #[cfg(all(feature = "server", feature = "runtime"))]
                     h1_header_read_timeout_fut: parse_ctx.h1_header_read_timeout_fut,
@@ -674,6 +676,8 @@ enum WriteStrategy {
 
 #[cfg(test)]
 mod tests {
+    use crate::common::tim::Tim;
+
     use super::*;
     use std::time::Duration;
 
@@ -734,6 +738,7 @@ mod tests {
             let parse_ctx = ParseContext {
                 cached_headers: &mut None,
                 req_method: &mut None,
+                timer: Tim::Default,
                 h1_parser_config: Default::default(),
                 #[cfg(feature = "runtime")]
                 h1_header_read_timeout: None,

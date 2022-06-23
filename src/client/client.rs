@@ -1321,11 +1321,11 @@ impl Builder {
     }
 
     /// Provide a timer to execute background `Connection` tasks.
-    pub fn timer<T>(&mut self, tim: T) -> &mut Self
+    pub fn timer<T>(&mut self, timer: T) -> &mut Self
     where
         T: Timer + Send + Sync,
     {
-        self.conn_builder.timer(tim);
+        self.conn_builder.timer(timer);
         self
     }
 
@@ -1357,7 +1357,7 @@ impl Builder {
             pool: Pool::new(
                 self.pool_config,
                 &self.conn_builder.exec,
-                &self.conn_builder.tim,
+                &self.conn_builder.timer,
             ),
         }
     }

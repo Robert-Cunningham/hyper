@@ -53,11 +53,13 @@ use std::time::Duration;
 
 #[cfg(feature = "http2")]
 use crate::common::io::Rewind;
-use crate::common::tim::Tim;
 #[cfg(all(feature = "http1", feature = "http2"))]
 use crate::error::{Kind, Parse};
 #[cfg(feature = "http1")]
 use crate::upgrade::Upgraded;
+use crate::{common::tim::Tim, rt::Timer};
+
+use std::sync::Arc;
 
 cfg_feature! {
     #![any(feature = "http1", feature = "http2")]
@@ -93,7 +95,7 @@ cfg_feature! {
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
 pub struct Http<E = Exec, M = Tim> {
     pub(crate) exec: E,
-    pub(crate) tim: M,
+    pub(crate) timer: M,
     h1_half_close: bool,
     h1_keep_alive: bool,
     h1_title_case_headers: bool,
@@ -233,7 +235,7 @@ impl Http {
     pub fn new() -> Http {
         Http {
             exec: Exec::Default,
-            tim: Tim::Default,
+            timer: Tim::Default,
             h1_half_close: false,
             h1_keep_alive: true,
             h1_title_case_headers: false,
@@ -251,7 +253,10 @@ impl Http {
 }
 
 #[cfg(any(feature = "http1", feature = "http2"))]
-impl<E, M> Http<E, M> {
+impl<E, M> Http<E, M>
+where
+    M: Timer + Send + Sync + 'static,
+{
     /// Sets whether HTTP1 is required.
     ///
     /// Default is false
@@ -563,7 +568,7 @@ impl<E, M> Http<E, M> {
     pub fn with_executor<E2>(self, exec: E2) -> Http<E2, M> {
         Http {
             exec,
-            tim: self.tim,
+            timer: self.timer,
             h1_half_close: self.h1_half_close,
             h1_keep_alive: self.h1_keep_alive,
             h1_title_case_headers: self.h1_title_case_headers,
@@ -582,10 +587,10 @@ impl<E, M> Http<E, M> {
     /// Set the timer used in background tasks.
     ///
     /// Default uses implicit default (like `tokio::spawn`). // TODO: Robert
-    pub fn with_timer<M2>(self, tim: M2) -> Http<E, M2> {
+    pub fn with_timer<M2>(self, timer: M2) -> Http<E, M2> {
         Http {
             exec: self.exec,
-            tim: tim,
+            timer,
             h1_half_close: self.h1_half_close,
             h1_keep_alive: self.h1_keep_alive,
             h1_title_case_headers: self.h1_title_case_headers,
@@ -641,7 +646,7 @@ impl<E, M> Http<E, M> {
         #[cfg(feature = "http1")]
         macro_rules! h1 {
             () => {{
-                let mut conn = proto::Conn::new(io);
+                let mut conn = proto::Conn::new(io, Tim::Timer(Arc::new(self.timer)));
                 if !self.h1_keep_alive {
                     conn.disable_keep_alive();
                 }
@@ -691,7 +696,7 @@ impl<E, M> Http<E, M> {
                     service,
                     &self.h2_builder,
                     self.exec.clone(),
-                    self.tim,
+                    self.timer,
                 );
                 ProtoServer::H2 { h2 }
             }
@@ -876,7 +881,7 @@ where
             dispatch.into_service(),
             builder,
             exec.clone(),
-            conn.tim.clone(),
+            conn.timer.clone(),
         );
 
         debug_assert!(self.conn.is_none());

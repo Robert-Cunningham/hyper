@@ -41,7 +41,7 @@ where
     B: Buf,
     T: Http1Transaction,
 {
-    pub(crate) fn new(io: I) -> Conn<I, B, T> {
+    pub(crate) fn new(io: I, timer: Tim) -> Conn<I, B, T> {
         Conn {
             io: Buffered::new(io),
             state: State {
@@ -52,7 +52,7 @@ where
                 method: None,
                 h1_parser_config: ParserConfig::default(),
                 #[cfg(all(feature = "server", feature = "runtime"))]
-                tim: Tim::Default,
+                timer: Tim::Default,
                 #[cfg(all(feature = "server", feature = "runtime"))]
                 h1_header_read_timeout: None,
                 #[cfg(all(feature = "server", feature = "runtime"))]
@@ -198,6 +198,8 @@ where
                 cached_headers: &mut self.state.cached_headers,
                 req_method: &mut self.state.method,
                 h1_parser_config: self.state.h1_parser_config.clone(),
+                #[cfg(all(feature = "server", feature = "runtime"))]
+                timer: self.state.timer,
                 #[cfg(all(feature = "server", feature = "runtime"))]
                 h1_header_read_timeout: self.state.h1_header_read_timeout,
                 #[cfg(all(feature = "server", feature = "runtime"))]
@@ -820,6 +822,8 @@ struct State {
     method: Option<Method>,
     h1_parser_config: ParserConfig,
     #[cfg(all(feature = "server", feature = "runtime"))]
+    timer: Tim,
+    #[cfg(all(feature = "server", feature = "runtime"))]
     h1_header_read_timeout: Option<Duration>,
     #[cfg(all(feature = "server", feature = "runtime"))]
     h1_header_read_timeout_fut: Option<Pin<Box<dyn Sleep>>>,
@@ -1055,7 +1059,8 @@ mod tests {
 
         // an empty IO, we'll be skipping and using the read buffer anyways
         let io = tokio_test::io::Builder::new().build();
-        let mut conn = Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(io);
+        let mut conn =
+            Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(io, Tim::Default);
         *conn.io.read_buf_mut() = ::bytes::BytesMut::from(&s[..]);
         conn.state.cached_headers = Some(HeaderMap::with_capacity(2));
 

@@ -35,7 +35,7 @@ use super::{Connected, Connection};
 pub struct HttpConnector<R = GaiResolver> {
     config: Arc<Config>,
     resolver: R,
-    tim: Tim,
+    timer: Tim,
 }
 
 /// Extra information about the transport when an HttpConnector is used.
@@ -126,7 +126,7 @@ impl<R> HttpConnector<R> {
                 recv_buffer_size: None,
             }),
             resolver,
-            tim: Tim::Default,
+            timer: Tim::Default,
         }
     }
 
@@ -350,7 +350,7 @@ where
             dns::SocketAddrs::new(addrs)
         };
 
-        let c = ConnectingTcp::new(addrs, config, &self.tim);
+        let c = ConnectingTcp::new(addrs, config, &self.timer);
 
         let sock = c.connect().await?;
 
@@ -486,7 +486,7 @@ struct ConnectingTcp<'a> {
 }
 
 impl<'a> ConnectingTcp<'a> {
-    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config, tim: &'a Tim) -> Self {
+    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config, timer: &'a Tim) -> Self {
         if let Some(fallback_timeout) = config.happy_eyeballs_timeout {
             let (preferred_addrs, fallback_addrs) = remote_addrs
                 .split_by_preference(config.local_address_ipv4, config.local_address_ipv6);
@@ -501,7 +501,7 @@ impl<'a> ConnectingTcp<'a> {
             ConnectingTcp {
                 preferred: ConnectingTcpRemote::new(preferred_addrs, config.connect_timeout),
                 fallback: Some(ConnectingTcpFallback {
-                    delay: tim.sleep(fallback_timeout),
+                    delay: timer.sleep(fallback_timeout),
                     remote: ConnectingTcpRemote::new(fallback_addrs, config.connect_timeout),
                 }),
                 config,

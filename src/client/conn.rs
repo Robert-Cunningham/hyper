@@ -153,7 +153,7 @@ where
 #[derive(Clone, Debug)]
 pub struct Builder {
     pub(super) exec: Exec,
-    pub(super) tim: Tim,
+    pub(super) timer: Tim,
     h09_responses: bool,
     h1_parser_config: ParserConfig,
     h1_writev: Option<bool>,
@@ -557,7 +557,7 @@ impl Builder {
     pub fn new() -> Builder {
         Builder {
             exec: Exec::Default,
-            tim: Tim::Default,
+            timer: Tim::Default,
             h09_responses: false,
             h1_writev: None,
             h1_read_buf_exact_size: None,
@@ -587,11 +587,11 @@ impl Builder {
         self
     }
 
-    pub fn timer<T>(&mut self, tim: T) -> &mut Builder
+    pub fn timer<T>(&mut self, timer: T) -> &mut Builder
     where
         T: Timer + Send + Sync + 'static,
     {
-        self.tim = Tim::Timer(Arc::new(tim));
+        self.timer = Tim::Timer(Arc::new(timer));
         self
     }
 
@@ -967,7 +967,7 @@ impl Builder {
             let proto = match opts.version {
                 #[cfg(feature = "http1")]
                 Proto::Http1 => {
-                    let mut conn = proto::Conn::new(io);
+                    let mut conn = proto::Conn::new(io, opts.timer);
                     conn.set_h1_parser_config(opts.h1_parser_config);
                     if let Some(writev) = opts.h1_writev {
                         if writev {
@@ -1010,7 +1010,7 @@ impl Builder {
                         rx,
                         &opts.h2_builder,
                         opts.exec.clone(),
-                        opts.tim.clone(),
+                        opts.timer.clone(),
                     )
                     .await?;
                     ProtoClient::H2 { h2 }

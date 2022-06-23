@@ -110,7 +110,7 @@ pub(crate) async fn handshake<T, B>(
     req_rx: ClientRx<B>,
     config: &Config,
     exec: Exec,
-    tim: Tim,
+    timer: Tim,
 ) -> crate::Result<ClientTask<B>>
 where
     T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
@@ -139,7 +139,7 @@ where
 
     let (conn, ping) = if ping_config.is_enabled() {
         let pp = conn.ping_pong().expect("conn.ping_pong");
-        let (recorder, mut ponger) = ping::channel(pp, ping_config, tim);
+        let (recorder, mut ponger) = ping::channel(pp, ping_config, timer);
 
         let conn = future::poll_fn(move |cx| {
             match ponger.poll(cx) {
