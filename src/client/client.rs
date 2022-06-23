@@ -1323,7 +1323,7 @@ impl Builder {
     /// Provide a timer to execute background `Connection` tasks.
     pub fn timer<T>(&mut self, timer: T) -> &mut Self
     where
-        T: Timer + Send + Sync,
+        T: Timer + Send + Sync + 'static,
     {
         self.conn_builder.timer(timer);
         self

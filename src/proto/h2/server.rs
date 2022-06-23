@@ -20,6 +20,7 @@ use crate::headers;
 use crate::proto::h2::ping::Recorder;
 use crate::proto::h2::{H2Upgraded, UpgradedSendStream};
 use crate::proto::Dispatched;
+use crate::rt::Timer;
 use crate::service::HttpService;
 
 use crate::upgrade::{OnUpgrade, Pending, Upgraded};
@@ -193,6 +194,7 @@ where
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
     B: HttpBody + 'static,
     E: ConnStreamExec<S::Future, B>,
+    M: Timer,
 {
     type Output = crate::Result<Dispatched>;
 

@@ -719,7 +719,7 @@ where
 // ===== impl Connection =====
 
 #[cfg(any(feature = "http1", feature = "http2"))]
-impl<I, B, S, E> Connection<I, S, E>
+impl<I, B, S, E, M> Connection<I, S, E, M>
 where
     S: HttpService<Body, ResBody = B>,
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
@@ -727,6 +727,7 @@ where
     B: HttpBody + 'static,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<S::Future, B>,
+    M: Timer,
 {
     /// Start a graceful shutdown process for this connection.
     ///
