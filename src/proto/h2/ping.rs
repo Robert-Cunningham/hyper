@@ -28,15 +28,13 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{self, Poll};
 use std::time::Duration;
-#[cfg(not(feature = "runtime"))]
 use std::time::Instant;
 
 use h2::{Ping, PingPong};
-#[cfg(feature = "runtime")]
-use tokio::time::{Instant, Sleep};
 use tracing::{debug, trace};
 
 use crate::common::tim::Tim;
+use crate::rt::Sleep;
 
 type WindowSize = u32;
 
@@ -69,7 +67,7 @@ pub(super) fn channel(ping_pong: PingPong, config: Config, tim: Tim) -> (Recorde
         interval,
         timeout: config.keep_alive_timeout,
         while_idle: config.keep_alive_while_idle,
-        timer: Box::pin(Tim::sleep(interval)),
+        timer: Box::<dyn Sleep>::pin(Tim::Default.sleep(interval).into()),
         state: KeepAliveState::Init,
     });
 
@@ -175,7 +173,7 @@ struct KeepAlive {
     while_idle: bool,
 
     state: KeepAliveState,
-    timer: Pin<Box<Sleep>>,
+    timer: Pin<Box<dyn Sleep>>,
 }
 
 #[cfg(feature = "runtime")]

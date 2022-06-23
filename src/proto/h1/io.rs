@@ -9,9 +9,9 @@ use std::mem::MaybeUninit;
 use std::time::Duration;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 #[cfg(all(feature = "server", feature = "runtime"))]
-use tokio::time::Instant;
+use std::time::Instant;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tracing::{debug, trace};
 
 use super::{Http1Transaction, ParseContext, ParsedMessage};

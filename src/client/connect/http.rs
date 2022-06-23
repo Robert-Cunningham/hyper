@@ -13,8 +13,10 @@ use futures_util::future::Either;
 use http::uri::{Scheme, Uri};
 use pin_project_lite::pin_project;
 use tokio::net::{TcpSocket, TcpStream};
-use tokio::time::Sleep;
 use tracing::{debug, trace, warn};
+
+use crate::common::tim::Tim;
+use crate::rt::{Sleep, Timer};
 
 use super::dns::{self, resolve, GaiResolver, Resolve};
 use super::{Connected, Connection};
@@ -33,6 +35,7 @@ use super::{Connected, Connection};
 pub struct HttpConnector<R = GaiResolver> {
     config: Arc<Config>,
     resolver: R,
+    tim: Tim,
 }
 
 /// Extra information about the transport when an HttpConnector is used.
@@ -123,6 +126,7 @@ impl<R> HttpConnector<R> {
                 recv_buffer_size: None,
             }),
             resolver,
+            tim: Tim::Default,
         }
     }
 
@@ -346,7 +350,7 @@ where
             dns::SocketAddrs::new(addrs)
         };
 
-        let c = ConnectingTcp::new(addrs, config);
+        let c = ConnectingTcp::new(addrs, config, &self.tim);
 
         let sock = c.connect().await?;
 
@@ -362,7 +366,10 @@ impl Connection for TcpStream {
     fn connected(&self) -> Connected {
         let connected = Connected::new();
         if let (Ok(remote_addr), Ok(local_addr)) = (self.peer_addr(), self.local_addr()) {
-            connected.extra(HttpInfo { remote_addr, local_addr })
+            connected.extra(HttpInfo {
+                remote_addr,
+                local_addr,
+            })
         } else {
             connected
         }
@@ -479,7 +486,7 @@ struct ConnectingTcp<'a> {
 }
 
 impl<'a> ConnectingTcp<'a> {
-    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config) -> Self {
+    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config, tim: &'a Tim) -> Self {
         if let Some(fallback_timeout) = config.happy_eyeballs_timeout {
             let (preferred_addrs, fallback_addrs) = remote_addrs
                 .split_by_preference(config.local_address_ipv4, config.local_address_ipv6);
@@ -494,7 +501,7 @@ impl<'a> ConnectingTcp<'a> {
             ConnectingTcp {
                 preferred: ConnectingTcpRemote::new(preferred_addrs, config.connect_timeout),
                 fallback: Some(ConnectingTcpFallback {
-                    delay: tokio::time::sleep(fallback_timeout),
+                    delay: tim.sleep(fallback_timeout),
                     remote: ConnectingTcpRemote::new(fallback_addrs, config.connect_timeout),
                 }),
                 config,
@@ -510,7 +517,7 @@ impl<'a> ConnectingTcp<'a> {
 }
 
 struct ConnectingTcpFallback {
-    delay: Sleep,
+    delay: Box<dyn Sleep>,
     remote: ConnectingTcpRemote,
 }
 
@@ -716,6 +723,8 @@ mod tests {
     use std::io;
 
     use ::http::Uri;
+
+    use crate::common::tim::Tim;
 
     use super::super::sealed::{Connect, ConnectSvc};
     use super::{Config, ConnectError, HttpConnector};
@@ -943,7 +952,8 @@ mod tests {
                         send_buffer_size: None,
                         recv_buffer_size: None,
                     };
-                    let connecting_tcp = ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg);
+                    let connecting_tcp =
+                        ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg, &Tim::Default);
                     let start = Instant::now();
                     Ok::<_, ConnectError>((start, ConnectingTcp::connect(connecting_tcp).await?))
                 })

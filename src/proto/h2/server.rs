@@ -74,13 +74,13 @@ impl Default for Config {
 }
 
 pin_project! {
-    pub(crate) struct Server<T, S, B, E, Ti>
+    pub(crate) struct Server<T, S, B, E, M>
     where
         S: HttpService<Body>,
         B: HttpBody,
     {
         exec: E,
-        tim: Ti,
+        tim: M,
         service: S,
         state: State<T, B>,
     }
@@ -107,7 +107,7 @@ where
     closing: Option<crate::Error>,
 }
 
-impl<T, S, B, E, Ti> Server<T, S, B, E, Ti>
+impl<T, S, B, E, M> Server<T, S, B, E, M>
 where
     T: AsyncRead + AsyncWrite + Unpin,
     S: HttpService<Body, ResBody = B>,
@@ -120,8 +120,8 @@ where
         service: S,
         config: &Config,
         exec: E,
-        tim: Ti,
-    ) -> Server<T, S, B, E, Ti> {
+        tim: M,
+    ) -> Server<T, S, B, E, M> {
         let mut builder = h2::server::Builder::default();
         builder
             .initial_window_size(config.initial_stream_window_size)
@@ -186,7 +186,7 @@ where
     }
 }
 
-impl<T, S, B, E, Ti> Future for Server<T, S, B, E, Ti>
+impl<T, S, B, E, M> Future for Server<T, S, B, E, M>
 where
     T: AsyncRead + AsyncWrite + Unpin,
     S: HttpService<Body, ResBody = B>,

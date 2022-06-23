@@ -4,16 +4,15 @@ use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, Weak};
 
-#[cfg(not(feature = "runtime"))]
 use std::time::{Duration, Instant};
 
 use futures_channel::oneshot;
-#[cfg(feature = "runtime")]
-use tokio::time::{Duration, Instant, Interval};
 use tracing::{debug, trace};
 
 use super::client::Ver;
+use crate::common::tim::Tim;
 use crate::common::{exec::Exec, task, Future, Pin, Poll, Unpin};
+use crate::rt::Interval;
 
 // FIXME: allow() required due to `impl Trait` leaking types to this lint
 #[allow(missing_debug_implementations)]
@@ -82,6 +81,7 @@ struct PoolInner<T> {
     idle_interval_ref: Option<oneshot::Sender<crate::common::Never>>,
     #[cfg(feature = "runtime")]
     exec: Exec,
+    tim: Tim,
     timeout: Option<Duration>,
 }
 
@@ -102,7 +102,7 @@ impl Config {
 }
 
 impl<T> Pool<T> {
-    pub(super) fn new(config: Config, __exec: &Exec) -> Pool<T> {
+    pub(super) fn new(config: Config, __exec: &Exec, tim: &Tim) -> Pool<T> {
         let inner = if config.is_enabled() {
             Some(Arc::new(Mutex::new(PoolInner {
                 connecting: HashSet::new(),
@@ -113,6 +113,7 @@ impl<T> Pool<T> {
                 waiters: HashMap::new(),
                 #[cfg(feature = "runtime")]
                 exec: __exec.clone(),
+                tim: tim.clone(),
                 timeout: config.idle_timeout,
             })))
         } else {
@@ -417,7 +418,7 @@ impl<T: Poolable> PoolInner<T> {
         };
 
         let interval = IdleTask {
-            interval: tokio::time::interval(dur),
+            interval: self.tim.interval(dur),
             pool: WeakOpt::downgrade(pool_ref),
             pool_drop_notifier: rx,
         };
@@ -734,7 +735,7 @@ impl Expiration {
 pin_project_lite::pin_project! {
     struct IdleTask<T> {
         #[pin]
-        interval: Interval,
+        interval: Box<dyn Interval>,
         pool: WeakOpt<Mutex<PoolInner<T>>>,
         // This allows the IdleTask to be notified as soon as the entire
         // Pool is fully dropped, and shutdown. This channel is never sent on,
@@ -794,7 +795,7 @@ mod tests {
     use std::time::Duration;
 
     use super::{Connecting, Key, Pool, Poolable, Reservation, WeakOpt};
-    use crate::common::{exec::Exec, task, Future, Pin};
+    use crate::common::{exec::Exec, task, tim::Tim, Future, Pin};
 
     /// Test unique reservations.
     #[derive(Debug, PartialEq, Eq)]
@@ -836,6 +837,7 @@ mod tests {
                 max_idle_per_host: max_idle,
             },
             &Exec::Default,
+            &Tim::Default,
         );
         pool.no_timer();
         pool
@@ -880,7 +882,7 @@ mod tests {
         let pooled = pool.pooled(c(key.clone()), Uniq(41));
 
         drop(pooled);
-        tokio::time::sleep(pool.locked().timeout.unwrap()).await;
+        Tim::Default.sleep(pool.locked().timeout.unwrap()).await;
         let mut checkout = pool.checkout(key);
         let poll_once = PollOnce(&mut checkout);
         let is_not_ready = poll_once.await.is_none();
@@ -901,7 +903,7 @@ mod tests {
             pool.locked().idle.get(&key).map(|entries| entries.len()),
             Some(3)
         );
-        tokio::time::sleep(pool.locked().timeout.unwrap()).await;
+        crate::rt::Timer::sleep(&Tim::Default, pool.locked().timeout.unwrap()).await;
 
         let mut checkout = pool.checkout(key.clone());
         let poll_once = PollOnce(&mut checkout);
@@ -930,7 +932,7 @@ mod tests {
     #[tokio::test]
     async fn test_pool_timer_removes_expired() {
         let _ = pretty_env_logger::try_init();
-        tokio::time::pause();
+        crate::common::tim::Tim::Default.pause();
 
         let pool = Pool::new(
             super::Config {
@@ -938,6 +940,7 @@ mod tests {
                 max_idle_per_host: std::usize::MAX,
             },
             &Exec::Default,
+            &Tim::Default,
         );
 
         let key = host_key("foo");
@@ -952,8 +955,9 @@ mod tests {
         );
 
         // Let the timer tick passed the expiration...
-        tokio::time::advance(Duration::from_millis(30)).await;
+        Tim::Default.advance(Duration::from_millis(30)).await;
         // Yield so the Interval can reap...
+        // TODO: Robert. What to do about this?
         tokio::task::yield_now().await;
 
         assert!(pool.locked().idle.get(&key).is_none());

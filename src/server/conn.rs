@@ -130,12 +130,12 @@ pin_project! {
     /// Polling this future will drive HTTP forward.
     #[must_use = "futures do nothing unless polled"]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-    pub struct Connection<T, S, E = Exec, Ti = Tim>
+    pub struct Connection<T, S, E = Exec, M = Tim>
     where
         S: HttpService<Body>,
     {
-        pub(super) conn: Option<ProtoServer<T, S::ResBody, S, E, Ti>>,
-        fallback: Fallback<E, Ti>,
+        pub(super) conn: Option<ProtoServer<T, S::ResBody, S, E, M>>,
+        fallback: Fallback<E>,
     }
 }
 
@@ -147,7 +147,7 @@ type Http1Dispatcher<T, B, S> =
 type Http1Dispatcher<T, B, S> = (Never, PhantomData<(T, Box<Pin<B>>, Box<Pin<S>>)>);
 
 #[cfg(feature = "http2")]
-type Http2Server<T, B, S, E, Ti> = proto::h2::Server<Rewind<T>, S, B, E, Ti>;
+type Http2Server<T, B, S, E, M> = proto::h2::Server<Rewind<T>, S, B, E, M>;
 
 #[cfg(all(not(feature = "http2"), feature = "http1"))]
 type Http2Server<T, B, S, E> = (
@@ -158,7 +158,7 @@ type Http2Server<T, B, S, E> = (
 #[cfg(any(feature = "http1", feature = "http2"))]
 pin_project! {
     #[project = ProtoServerProj]
-    pub(super) enum ProtoServer<T, B, S, E = Exec, Ti = Tim>
+    pub(super) enum ProtoServer<T, B, S, E = Exec, M = Tim>
     where
         S: HttpService<Body>,
         B: HttpBody,
@@ -169,7 +169,7 @@ pin_project! {
         },
         H2 {
             #[pin]
-            h2: Http2Server<T, B, S, E, Ti>,
+            h2: Http2Server<T, B, S, E, M>,
         },
     }
 }
@@ -686,8 +686,13 @@ impl<E, T> Http<E, T> {
             #[cfg(feature = "http2")]
             ConnectionMode::H2Only => {
                 let rewind_io = Rewind::new(io);
-                let h2 =
-                    proto::h2::Server::new(rewind_io, service, &self.h2_builder, self.exec.clone());
+                let h2 = proto::h2::Server::new(
+                    rewind_io,
+                    service,
+                    &self.h2_builder,
+                    self.exec.clone(),
+                    self.tim,
+                );
                 ProtoServer::H2 { h2 }
             }
         };
@@ -866,7 +871,13 @@ where
             Fallback::ToHttp2(ref builder, ref exec) => (builder, exec),
             Fallback::Http1Only => unreachable!("upgrade_h2 with Fallback::Http1Only"),
         };
-        let h2 = proto::h2::Server::new(rewind_io, dispatch.into_service(), builder, exec.clone());
+        let h2 = proto::h2::Server::new(
+            rewind_io,
+            dispatch.into_service(),
+            builder,
+            exec.clone(),
+            conn.tim.clone(),
+        );
 
         debug_assert!(self.conn.is_none());
         self.conn = Some(ProtoServer::H2 { h2 });

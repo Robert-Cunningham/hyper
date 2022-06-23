@@ -71,6 +71,7 @@ use tower_service::Service;
 use tracing::{debug, trace};
 
 use super::dispatch;
+use crate::body::HttpBody;
 #[cfg(not(all(feature = "http1", feature = "http2")))]
 use crate::common::Never;
 use crate::common::{
@@ -83,7 +84,6 @@ use crate::proto;
 use crate::rt::{Executor, Timer};
 #[cfg(feature = "http1")]
 use crate::upgrade::Upgraded;
-use crate::{body::HttpBody};
 use crate::{Body, Request, Response};
 
 #[cfg(feature = "http1")]
@@ -1005,9 +1005,14 @@ impl Builder {
                 }
                 #[cfg(feature = "http2")]
                 Proto::Http2 => {
-                    let h2 =
-                        proto::h2::client::handshake(io, rx, &opts.h2_builder, opts.exec.clone())
-                            .await?;
+                    let h2 = proto::h2::client::handshake(
+                        io,
+                        rx,
+                        &opts.h2_builder,
+                        opts.exec.clone(),
+                        opts.tim.clone(),
+                    )
+                    .await?;
                     ProtoClient::H2 { h2 }
                 }
             };

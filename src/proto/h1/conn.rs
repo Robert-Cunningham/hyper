@@ -9,8 +9,6 @@ use http::header::{HeaderValue, CONNECTION};
 use http::{HeaderMap, Method, Version};
 use httparse::ParserConfig;
 use tokio::io::{AsyncRead, AsyncWrite};
-#[cfg(all(feature = "server", feature = "runtime"))]
-use tokio::time::Sleep;
 use tracing::{debug, error, trace};
 
 use super::io::Buffered;
@@ -19,6 +17,7 @@ use crate::body::DecodedLength;
 use crate::common::{task, Pin, Poll, Unpin};
 use crate::headers::connection_keep_alive;
 use crate::proto::{BodyLength, MessageHead};
+use crate::rt::Sleep;
 
 const H2_PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
@@ -820,7 +819,7 @@ struct State {
     #[cfg(all(feature = "server", feature = "runtime"))]
     h1_header_read_timeout: Option<Duration>,
     #[cfg(all(feature = "server", feature = "runtime"))]
-    h1_header_read_timeout_fut: Option<Pin<Box<Sleep>>>,
+    h1_header_read_timeout_fut: Option<Pin<Box<dyn Sleep>>>,
     #[cfg(all(feature = "server", feature = "runtime"))]
     h1_header_read_timeout_running: bool,
     preserve_header_case: bool,

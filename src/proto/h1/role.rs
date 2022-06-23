@@ -8,7 +8,7 @@ use http::header::ValueIter;
 use http::header::{self, Entry, HeaderName, HeaderValue};
 use http::{HeaderMap, Method, StatusCode, Version};
 #[cfg(all(feature = "server", feature = "runtime"))]
-use tokio::time::Instant;
+use std::time::Instant;
 use tracing::{debug, error, trace, trace_span, warn};
 
 use crate::body::DecodedLength;

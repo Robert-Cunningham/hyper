@@ -1,6 +1,6 @@
 use std::{fmt, sync::Arc, time::Duration};
 
-use crate::rt::Timer;
+use crate::rt::{Sleep, Timer};
 
 // Either the user provides a timer for background tasks, or we use
 // `tokio::timer`.
@@ -16,11 +16,20 @@ impl fmt::Debug for Tim {
     }
 }
 
-impl Tim {
-    pub(crate) fn sleep(duration: Duration) {
+impl Timer for Tim {
+    fn sleep(&self, duration: Duration) -> &dyn Sleep {
         match *self {
-            Tim::Default => tokio::time::sleep(duration),
+            Tim::Default => &tokio::time::sleep(duration),
             Tim::Timer(ref t) => t.sleep(duration),
         }
     }
 }
+
+/*
+Box<dyn Sleep>
+
+the trait `rt::Sleep` cannot be made into an object
+`rt::Sleep` cannot be made into an objectrustcE0038
+rt.rs(37, 54): for a trait to be "object safe" it needs to allow building a vtable to allow the call to be resolvable dynamically; for more information visit <https://doc.rust-lang.org/reference/items/traits.html#object-safety>
+
+*/

@@ -1354,7 +1354,11 @@ impl Builder {
             config: self.client_config,
             conn_builder: self.conn_builder.clone(),
             connector,
-            pool: Pool::new(self.pool_config, &self.conn_builder.exec),
+            pool: Pool::new(
+                self.pool_config,
+                &self.conn_builder.exec,
+                &self.conn_builder.tim,
+            ),
         }
     }
 }
