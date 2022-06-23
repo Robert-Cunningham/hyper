@@ -14,7 +14,6 @@ use super::accept::Accept;
 use super::tcp::AddrIncoming;
 use crate::body::{Body, HttpBody};
 use crate::common::exec::Exec;
-use crate::common::tim::Tim;
 use crate::common::exec::{ConnStreamExec, NewSvcExec};
 use crate::common::{task, Future, Pin, Poll, Unpin};
 // Renamed `Http` as `Http_` for now so that people upgrading don't see an
@@ -25,6 +24,8 @@ use crate::service::{HttpService, MakeServiceRef};
 
 use self::new_svc::NewSvcTask;
 
+use crate::rt::Timer;
+
 pin_project! {
     /// A listening HTTP server that accepts connections in both HTTP1 and HTTP2 by default.
     ///
@@ -32,20 +33,20 @@ pin_project! {
     /// handlers. It is built using the [`Builder`](Builder), and the future
     /// completes when the server has been shutdown. It should be run by an
     /// `Executor`.
-    pub struct Server<I, S, E = Exec, T = Tim> {
+    pub struct Server<I, S, E = Exec> {
         #[pin]
         incoming: I,
         make_service: S,
-        protocol: Http_<E, T>,
+        protocol: Http_<E>,
     }
 }
 
 /// A builder for a [`Server`](Server).
 #[derive(Debug)]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-pub struct Builder<I, E = Exec, T = Tim> {
+pub struct Builder<I, E = Exec> {
     incoming: I,
-    protocol: Http_<E, T>,
+    protocol: Http_<E>,
 }
 
 // ===== impl Server =====
@@ -236,11 +237,11 @@ impl<I: fmt::Debug, S: fmt::Debug> fmt::Debug for Server<I, S> {
 // ===== impl Builder =====
 
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-impl<I, E, M> Builder<I, E, M> {
+impl<I, E> Builder<I, E> {
     /// Start a new builder, wrapping an incoming stream and low-level options.
     ///
     /// For a more convenient constructor, see [`Server::bind`](Server::bind).
-    pub fn new(incoming: I, protocol: Http_<E, M>) -> Self {
+    pub fn new(incoming: I, protocol: Http_<E>) -> Self {
         Builder { incoming, protocol }
     }
 
@@ -497,7 +498,7 @@ impl<I, E, M> Builder<I, E, M> {
     /// Sets the `Executor` to deal with connection tasks.
     ///
     /// Default is `tokio::spawn`.
-    pub fn executor<E2>(self, executor: E2) -> Builder<I, E2, T> {
+    pub fn executor<E2>(self, executor: E2) -> Builder<I, E2> {
         Builder {
             incoming: self.incoming,
             protocol: self.protocol.with_executor(executor),
@@ -507,7 +508,8 @@ impl<I, E, M> Builder<I, E, M> {
     /// Sets the `Timer` to deal with connection tasks.
     ///
     /// Default is `tokio::spawn`. // TODO: Robert
-    pub fn timer<T2>(self, timer: T2) -> Builder<I, E, T2> {
+    pub fn timer<M>(self, timer: M) -> Builder<I, E> 
+        where M: Timer + Send + Sync {
         Builder {
             incoming: self.incoming,
             protocol: self.protocol.with_timer(timer),
@@ -569,7 +571,7 @@ impl<I, E, M> Builder<I, E, M> {
     docsrs,
     doc(cfg(all(feature = "tcp", any(feature = "http1", feature = "http2"))))
 )]
-impl<E, T> Builder<AddrIncoming, E, T> {
+impl<E> Builder<AddrIncoming, E> {
     /// Set whether TCP keepalive messages are enabled on accepted connections.
     ///
     /// If `None` is specified, keepalive is disabled, otherwise the duration
@@ -761,11 +763,11 @@ pin_project! {
     #[must_use = "futures do nothing unless polled"]
     #[derive(Debug)]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-    pub struct Connecting<I, F, E = Exec, T = Tim> {
+    pub struct Connecting<I, F, E = Exec> {
         #[pin]
         future: F,
         io: Option<I>,
-        protocol: Http_<E, T>,
+        protocol: Http_<E>,
     }
 }
 

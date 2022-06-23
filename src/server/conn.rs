@@ -53,12 +53,13 @@ use std::time::Duration;
 
 #[cfg(feature = "http2")]
 use crate::common::io::Rewind;
+use crate::common::tim::Tim;
 #[cfg(all(feature = "http1", feature = "http2"))]
 use crate::error::{Kind, Parse};
 #[cfg(feature = "http1")]
 use crate::upgrade::Upgraded;
-use crate::{common::tim::Tim, rt::Timer};
 
+use crate::rt::Timer;
 use std::sync::Arc;
 
 cfg_feature! {
@@ -93,9 +94,9 @@ cfg_feature! {
 #[derive(Clone, Debug)]
 #[cfg(any(feature = "http1", feature = "http2"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-pub struct Http<E = Exec, M = Tim> {
+pub struct Http<E = Exec> {
     pub(crate) exec: E,
-    pub(crate) timer: M,
+    pub(crate) timer: Tim,
     h1_half_close: bool,
     h1_keep_alive: bool,
     h1_title_case_headers: bool,
@@ -132,11 +133,11 @@ pin_project! {
     /// Polling this future will drive HTTP forward.
     #[must_use = "futures do nothing unless polled"]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-    pub struct Connection<T, S, E = Exec, M = Tim>
+    pub struct Connection<T, S, E = Exec>
     where
         S: HttpService<Body>,
     {
-        pub(super) conn: Option<ProtoServer<T, S::ResBody, S, E, M>>,
+        pub(super) conn: Option<ProtoServer<T, S::ResBody, S, E>>,
         fallback: Fallback<E>,
     }
 }
@@ -179,7 +180,7 @@ pin_project! {
 #[cfg(all(feature = "http1", feature = "http2"))]
 #[derive(Clone, Debug)]
 enum Fallback<E> {
-    ToHttp2(proto::h2::server::Config, E),
+    ToHttp2(proto::h2::server::Config, E, Tim),
     Http1Only,
 }
 
@@ -253,10 +254,7 @@ impl Http {
 }
 
 #[cfg(any(feature = "http1", feature = "http2"))]
-impl<E, M> Http<E, M>
-where
-    M: Timer + Send + Sync + 'static,
-{
+impl<E> Http<E> {
     /// Sets whether HTTP1 is required.
     ///
     /// Default is false
@@ -565,7 +563,7 @@ where
     /// Set the executor used to spawn background tasks.
     ///
     /// Default uses implicit default (like `tokio::spawn`).
-    pub fn with_executor<E2>(self, exec: E2) -> Http<E2, M> {
+    pub fn with_executor<E2>(self, exec: E2) -> Http<E2> {
         Http {
             exec,
             timer: self.timer,
@@ -587,10 +585,13 @@ where
     /// Set the timer used in background tasks.
     ///
     /// Default uses implicit default (like `tokio::spawn`). // TODO: Robert
-    pub fn with_timer<M2>(self, timer: M2) -> Http<E, M2> {
+    pub fn with_timer<M>(self, timer: M) -> Http<E>
+    where
+        M: Timer + Send + Sync,
+    {
         Http {
             exec: self.exec,
-            timer,
+            timer: Tim::Timer(Arc::new(timer)),
             h1_half_close: self.h1_half_close,
             h1_keep_alive: self.h1_keep_alive,
             h1_title_case_headers: self.h1_title_case_headers,
@@ -706,7 +707,11 @@ where
             conn: Some(proto),
             #[cfg(all(feature = "http1", feature = "http2"))]
             fallback: if self.mode == ConnectionMode::Fallback {
-                Fallback::ToHttp2(self.h2_builder.clone(), self.exec.clone())
+                Fallback::ToHttp2(
+                    self.h2_builder.clone(),
+                    self.exec.clone(),
+                    self.timer.clone(),
+                )
             } else {
                 Fallback::Http1Only
             },
@@ -719,7 +724,7 @@ where
 // ===== impl Connection =====
 
 #[cfg(any(feature = "http1", feature = "http2"))]
-impl<I, B, S, E, M> Connection<I, S, E, M>
+impl<I, B, S, E> Connection<I, S, E>
 where
     S: HttpService<Body, ResBody = B>,
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
@@ -727,7 +732,6 @@ where
     B: HttpBody + 'static,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<S::Future, B>,
-    M: Timer,
 {
     /// Start a graceful shutdown process for this connection.
     ///
@@ -873,8 +877,8 @@ where
         };
         let mut rewind_io = Rewind::new(io);
         rewind_io.rewind(read_buf);
-        let (builder, exec) = match self.fallback {
-            Fallback::ToHttp2(ref builder, ref exec) => (builder, exec),
+        let (builder, exec, timer) = match self.fallback {
+            Fallback::ToHttp2(ref builder, ref exec, ref timer) => (builder, exec, timer),
             Fallback::Http1Only => unreachable!("upgrade_h2 with Fallback::Http1Only"),
         };
         let h2 = proto::h2::Server::new(
@@ -882,7 +886,7 @@ where
             dispatch.into_service(),
             builder,
             exec.clone(),
-            conn.timer.clone(),
+            timer.clone(),
         );
 
         debug_assert!(self.conn.is_none());
