@@ -32,11 +32,11 @@ pin_project! {
     /// handlers. It is built using the [`Builder`](Builder), and the future
     /// completes when the server has been shutdown. It should be run by an
     /// `Executor`.
-    pub struct Server<I, S, E = Exec> {
+    pub struct Server<I, S, E = Exec, T = Tim> {
         #[pin]
         incoming: I,
         make_service: S,
-        protocol: Http_<E>,
+        protocol: Http_<E, T>,
     }
 }
 
@@ -761,11 +761,11 @@ pin_project! {
     #[must_use = "futures do nothing unless polled"]
     #[derive(Debug)]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-    pub struct Connecting<I, F, E = Exec> {
+    pub struct Connecting<I, F, E = Exec, T = Tim> {
         #[pin]
         future: F,
         io: Option<I>,
-        protocol: Http_<E>,
+        protocol: Http_<E, T>,
     }
 }
 

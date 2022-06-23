@@ -5,6 +5,8 @@
 //! If the `runtime` feature is disabled, the types in this module can be used
 //! to plug in other runtimes.
 
+use std::time::Duration;
+
 /// An executor of futures.
 pub trait Executor<Fut> {
     /// Place the future into the executor to be run.
@@ -12,5 +14,5 @@ pub trait Executor<Fut> {
 }
 
 pub trait Timer {
-
+    fn sleep(duration: Duration);
 }

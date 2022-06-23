@@ -35,7 +35,7 @@ const DEFAULT_CONN_WINDOW: u32 = 1024 * 1024; // 1mb
 const DEFAULT_STREAM_WINDOW: u32 = 1024 * 1024; // 1mb
 const DEFAULT_MAX_FRAME_SIZE: u32 = 1024 * 16; // 16kb
 const DEFAULT_MAX_SEND_BUF_SIZE: usize = 1024 * 400; // 400kb
-// 16 MB "sane default" taken from golang http2
+                                                     // 16 MB "sane default" taken from golang http2
 const DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE: u32 = 16 << 20;
 
 #[derive(Clone, Debug)]
@@ -74,12 +74,13 @@ impl Default for Config {
 }
 
 pin_project! {
-    pub(crate) struct Server<T, S, B, E>
+    pub(crate) struct Server<T, S, B, E, Ti>
     where
         S: HttpService<Body>,
         B: HttpBody,
     {
         exec: E,
+        tim: Ti,
         service: S,
         state: State<T, B>,
     }
@@ -106,7 +107,7 @@ where
     closing: Option<crate::Error>,
 }
 
-impl<T, S, B, E> Server<T, S, B, E>
+impl<T, S, B, E, Ti> Server<T, S, B, E, Ti>
 where
     T: AsyncRead + AsyncWrite + Unpin,
     S: HttpService<Body, ResBody = B>,
@@ -114,7 +115,13 @@ where
     B: HttpBody + 'static,
     E: ConnStreamExec<S::Future, B>,
 {
-    pub(crate) fn new(io: T, service: S, config: &Config, exec: E) -> Server<T, S, B, E> {
+    pub(crate) fn new(
+        io: T,
+        service: S,
+        config: &Config,
+        exec: E,
+        tim: Ti,
+    ) -> Server<T, S, B, E, Ti> {
         let mut builder = h2::server::Builder::default();
         builder
             .initial_window_size(config.initial_stream_window_size)
@@ -150,6 +157,7 @@ where
 
         Server {
             exec,
+            tim,
             state: State::Handshaking {
                 ping_config,
                 hs: handshake,
@@ -178,7 +186,7 @@ where
     }
 }
 
-impl<T, S, B, E> Future for Server<T, S, B, E>
+impl<T, S, B, E, Ti> Future for Server<T, S, B, E, Ti>
 where
     T: AsyncRead + AsyncWrite + Unpin,
     S: HttpService<Body, ResBody = B>,
@@ -199,7 +207,7 @@ where
                     let mut conn = ready!(Pin::new(hs).poll(cx).map_err(crate::Error::new_h2))?;
                     let ping = if ping_config.is_enabled() {
                         let pp = conn.ping_pong().expect("conn.ping_pong");
-                        Some(ping::channel(pp, ping_config.clone()))
+                        Some(ping::channel(pp, ping_config.clone(), self.tim))
                     } else {
                         None
                     };
@@ -502,7 +510,6 @@ where
                             return Poll::Ready(Ok(()));
                         }
                     }
-
 
                     if !body.is_end_stream() {
                         // automatically set Content-Length from body...

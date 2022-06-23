@@ -36,13 +36,15 @@ use h2::{Ping, PingPong};
 use tokio::time::{Instant, Sleep};
 use tracing::{debug, trace};
 
+use crate::common::tim::Tim;
+
 type WindowSize = u32;
 
 pub(super) fn disabled() -> Recorder {
     Recorder { shared: None }
 }
 
-pub(super) fn channel(ping_pong: PingPong, config: Config) -> (Recorder, Ponger) {
+pub(super) fn channel(ping_pong: PingPong, config: Config, tim: Tim) -> (Recorder, Ponger) {
     debug_assert!(
         config.is_enabled(),
         "ping channel requires bdp or keep-alive config",
@@ -67,7 +69,7 @@ pub(super) fn channel(ping_pong: PingPong, config: Config) -> (Recorder, Ponger)
         interval,
         timeout: config.keep_alive_timeout,
         while_idle: config.keep_alive_while_idle,
-        timer: Box::pin(tokio::time::sleep(interval)),
+        timer: Box::pin(Tim::sleep(interval)),
         state: KeepAliveState::Init,
     });
 
@@ -328,7 +330,7 @@ impl Ponger {
                     }
                 }
 
-                if let Some(ref mut bdp) =  self.bdp {
+                if let Some(ref mut bdp) = self.bdp {
                     let bytes = locked.bytes.expect("bdp enabled implies bytes");
                     locked.bytes = Some(0); // reset
                     trace!("received BDP ack; bytes = {}, rtt = {:?}", bytes, rtt);
@@ -336,7 +338,7 @@ impl Ponger {
                     let update = bdp.calculate(bytes, rtt);
                     locked.next_bdp_at = Some(now + bdp.ping_delay);
                     if let Some(update) = update {
-                        return Poll::Ready(Ponged::SizeUpdate(update))
+                        return Poll::Ready(Ponged::SizeUpdate(update));
                     }
                 }
             }

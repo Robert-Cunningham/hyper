@@ -53,7 +53,7 @@ use std::time::Duration;
 
 #[cfg(feature = "http2")]
 use crate::common::io::Rewind;
-use crate::common::timer::Tim;
+use crate::common::tim::Tim;
 #[cfg(all(feature = "http1", feature = "http2"))]
 use crate::error::{Kind, Parse};
 #[cfg(feature = "http1")]
@@ -130,12 +130,12 @@ pin_project! {
     /// Polling this future will drive HTTP forward.
     #[must_use = "futures do nothing unless polled"]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-    pub struct Connection<T, S, E = Exec>
+    pub struct Connection<T, S, E = Exec, Ti = Tim>
     where
         S: HttpService<Body>,
     {
-        pub(super) conn: Option<ProtoServer<T, S::ResBody, S, E>>,
-        fallback: Fallback<E>,
+        pub(super) conn: Option<ProtoServer<T, S::ResBody, S, E, Ti>>,
+        fallback: Fallback<E, Ti>,
     }
 }
 
@@ -147,7 +147,7 @@ type Http1Dispatcher<T, B, S> =
 type Http1Dispatcher<T, B, S> = (Never, PhantomData<(T, Box<Pin<B>>, Box<Pin<S>>)>);
 
 #[cfg(feature = "http2")]
-type Http2Server<T, B, S, E> = proto::h2::Server<Rewind<T>, S, B, E>;
+type Http2Server<T, B, S, E, Ti> = proto::h2::Server<Rewind<T>, S, B, E, Ti>;
 
 #[cfg(all(not(feature = "http2"), feature = "http1"))]
 type Http2Server<T, B, S, E> = (
@@ -158,7 +158,7 @@ type Http2Server<T, B, S, E> = (
 #[cfg(any(feature = "http1", feature = "http2"))]
 pin_project! {
     #[project = ProtoServerProj]
-    pub(super) enum ProtoServer<T, B, S, E = Exec>
+    pub(super) enum ProtoServer<T, B, S, E = Exec, Ti = Tim>
     where
         S: HttpService<Body>,
         B: HttpBody,
@@ -169,7 +169,7 @@ pin_project! {
         },
         H2 {
             #[pin]
-            h2: Http2Server<T, B, S, E>,
+            h2: Http2Server<T, B, S, E, Ti>,
         },
     }
 }

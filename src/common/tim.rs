@@ -1,4 +1,4 @@
-use std::{fmt, sync::Arc};
+use std::{fmt, sync::Arc, time::Duration};
 
 use crate::rt::Timer;
 
@@ -16,4 +16,11 @@ impl fmt::Debug for Tim {
     }
 }
 
-impl Tim {}
+impl Tim {
+    pub(crate) fn sleep(duration: Duration) {
+        match *self {
+            Tim::Default => tokio::time::sleep(duration),
+            Tim::Timer(ref t) => t.sleep(duration),
+        }
+    }
+}

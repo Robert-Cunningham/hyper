@@ -76,7 +76,7 @@ use crate::common::Never;
 use crate::common::{
     exec::{BoxSendFuture, Exec},
     task,
-    timer::Tim,
+    tim::Tim,
     Future, Pin, Poll,
 };
 use crate::proto;
