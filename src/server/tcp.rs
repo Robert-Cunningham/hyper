@@ -9,6 +9,7 @@ use tracing::{debug, error, trace};
 use crate::common::tim::Tim;
 use crate::common::{task, Future, Pin, Poll};
 use crate::rt::Sleep;
+use crate::rt::Timer;
 
 use super::accept::Accept;
 
@@ -133,7 +134,7 @@ impl AddrIncoming {
                         error!("accept error: {}", e);
 
                         // Sleep 1s.
-                        let mut timeout = Box::pin(self.tim.sleep(Duration::from_secs(1)).into());
+                        let mut timeout = Box::into_pin(self.tim.sleep(Duration::from_secs(1)));
 
                         match timeout.as_mut().poll(cx) {
                             Poll::Ready(()) => {

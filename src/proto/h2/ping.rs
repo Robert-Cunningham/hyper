@@ -34,7 +34,7 @@ use h2::{Ping, PingPong};
 use tracing::{debug, trace};
 
 use crate::common::tim::Tim;
-use crate::rt::Sleep;
+use crate::rt::{Sleep, Timer};
 
 type WindowSize = u32;
 
@@ -67,7 +67,7 @@ pub(super) fn channel(ping_pong: PingPong, config: Config, tim: Tim) -> (Recorde
         interval,
         timeout: config.keep_alive_timeout,
         while_idle: config.keep_alive_while_idle,
-        timer: Box::<dyn Sleep>::pin(Tim::Default.sleep(interval).into()),
+        timer: Box::into_pin((Tim::Default).sleep(interval)),
         state: KeepAliveState::Init,
     });
 

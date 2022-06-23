@@ -517,7 +517,7 @@ impl<'a> ConnectingTcp<'a> {
 }
 
 struct ConnectingTcpFallback {
-    delay: Box<dyn Sleep>,
+    delay: Box<dyn Sleep + Unpin>,
     remote: ConnectingTcpRemote,
 }
 

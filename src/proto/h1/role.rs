@@ -23,6 +23,7 @@ use crate::proto::h1::{
     Encode, Encoder, Http1Transaction, ParseContext, ParseResult, ParsedMessage,
 };
 use crate::proto::{BodyLength, MessageHead, RequestHead, RequestLine};
+use crate::rt::Timer;
 
 const MAX_HEADERS: usize = 100;
 const AVERAGE_HEADER_SIZE: usize = 30; // totally scientific
@@ -88,7 +89,9 @@ where
                 None => {
                     debug!("setting h1 header read timeout timer");
                     *ctx.h1_header_read_timeout_fut =
-                        Some(Box::pin(tokio::time::sleep_until(deadline)));
+                        Some(Box::into_pin(ctx.tim.sleep_until(deadline))) // TODO(robert): Add a `Tim` to every ParseContext
+
+                    //Some(Box::pin(tokio::time::sleep_until(deadline)));
                 }
             }
         }

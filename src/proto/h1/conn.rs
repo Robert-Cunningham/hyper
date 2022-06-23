@@ -14,6 +14,7 @@ use tracing::{debug, error, trace};
 use super::io::Buffered;
 use super::{Decoder, Encode, EncodedBuf, Encoder, Http1Transaction, ParseContext, Wants};
 use crate::body::DecodedLength;
+use crate::common::tim::Tim;
 use crate::common::{task, Pin, Poll, Unpin};
 use crate::headers::connection_keep_alive;
 use crate::proto::{BodyLength, MessageHead};
@@ -50,6 +51,8 @@ where
                 keep_alive: KA::Busy,
                 method: None,
                 h1_parser_config: ParserConfig::default(),
+                #[cfg(all(feature = "server", feature = "runtime"))]
+                tim: Tim::Default,
                 #[cfg(all(feature = "server", feature = "runtime"))]
                 h1_header_read_timeout: None,
                 #[cfg(all(feature = "server", feature = "runtime"))]

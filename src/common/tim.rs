@@ -1,4 +1,12 @@
-use std::{fmt, sync::Arc, time::Duration};
+use std::{
+    fmt,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+    time::{Duration, Instant},
+};
+
+use futures_core::Future;
 
 use crate::rt::{Sleep, Timer};
 
@@ -17,11 +25,40 @@ impl fmt::Debug for Tim {
 }
 
 impl Timer for Tim {
-    fn sleep(&self, duration: Duration) -> &mut dyn Sleep {
+    fn sleep(&self, duration: Duration) -> Box<dyn Sleep + Unpin> {
         match *self {
-            Tim::Default => &mut tokio::time::sleep(duration),
+            Tim::Default => {
+                let s = tokio::time::sleep(duration);
+                //tokio::pin!(s);
+                let hs = HasSleep { sleep: Box::pin(s) };
+                return Box::new(hs);
+            }
             Tim::Timer(ref t) => t.sleep(duration),
         }
+    }
+    fn sleep_until(&self, deadline: Instant) -> Box<dyn Sleep + Unpin> {
+        match *self {
+            Tim::Default => {
+                return Box::new(HasSleep {
+                    sleep: Box::pin(tokio::time::sleep_until(deadline.into())),
+                })
+            }
+            Tim::Timer(ref t) => t.sleep_until(deadline),
+        }
+    }
+}
+
+// Use HasSleep to get tokio::time::Sleep to implement Unpin.
+// see https://docs.rs/tokio/latest/tokio/time/struct.Sleep.html
+pub(crate) struct HasSleep {
+    sleep: Pin<Box<tokio::time::Sleep>>,
+}
+
+impl Future for HasSleep {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.sleep.as_mut().poll(cx)
     }
 }
 

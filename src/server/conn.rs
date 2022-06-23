@@ -91,9 +91,9 @@ cfg_feature! {
 #[derive(Clone, Debug)]
 #[cfg(any(feature = "http1", feature = "http2"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-pub struct Http<E = Exec, T = Tim> {
+pub struct Http<E = Exec, M = Tim> {
     pub(crate) exec: E,
-    pub(crate) tim: T,
+    pub(crate) tim: M,
     h1_half_close: bool,
     h1_keep_alive: bool,
     h1_title_case_headers: bool,
@@ -251,7 +251,7 @@ impl Http {
 }
 
 #[cfg(any(feature = "http1", feature = "http2"))]
-impl<E, T> Http<E, T> {
+impl<E, M> Http<E, M> {
     /// Sets whether HTTP1 is required.
     ///
     /// Default is false
@@ -560,7 +560,7 @@ impl<E, T> Http<E, T> {
     /// Set the executor used to spawn background tasks.
     ///
     /// Default uses implicit default (like `tokio::spawn`).
-    pub fn with_executor<E2>(self, exec: E2) -> Http<E2, T> {
+    pub fn with_executor<E2>(self, exec: E2) -> Http<E2, M> {
         Http {
             exec,
             tim: self.tim,
@@ -582,7 +582,7 @@ impl<E, T> Http<E, T> {
     /// Set the timer used in background tasks.
     ///
     /// Default uses implicit default (like `tokio::spawn`). // TODO: Robert
-    pub fn with_timer<T2>(self, tim: T2) -> Http<E, T2> {
+    pub fn with_timer<M2>(self, tim: M2) -> Http<E, M2> {
         Http {
             exec: self.exec,
             tim: tim,

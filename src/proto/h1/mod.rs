@@ -6,6 +6,7 @@ use http::{HeaderMap, Method};
 use httparse::ParserConfig;
 
 use crate::body::DecodedLength;
+use crate::common::tim::Tim;
 use crate::proto::{BodyLength, MessageHead};
 use crate::rt::Sleep;
 
@@ -75,6 +76,8 @@ pub(crate) struct ParseContext<'a> {
     cached_headers: &'a mut Option<HeaderMap>,
     req_method: &'a mut Option<Method>,
     h1_parser_config: ParserConfig,
+    #[cfg(all(feature = "server", feature = "runtime"))]
+    tim: Tim,
     #[cfg(all(feature = "server", feature = "runtime"))]
     h1_header_read_timeout: Option<Duration>,
     #[cfg(all(feature = "server", feature = "runtime"))]

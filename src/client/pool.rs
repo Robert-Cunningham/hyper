@@ -796,6 +796,7 @@ mod tests {
 
     use super::{Connecting, Key, Pool, Poolable, Reservation, WeakOpt};
     use crate::common::{exec::Exec, task, tim::Tim, Future, Pin};
+    use crate::rt::Timer;
 
     /// Test unique reservations.
     #[derive(Debug, PartialEq, Eq)]
@@ -903,7 +904,7 @@ mod tests {
             pool.locked().idle.get(&key).map(|entries| entries.len()),
             Some(3)
         );
-        (*crate::rt::Timer::sleep(&Tim::Default, pool.locked().timeout.unwrap())).await;
+        crate::rt::Timer::sleep(&Tim::Default, pool.locked().timeout.unwrap()).await;
 
         let mut checkout = pool.checkout(key.clone());
         let poll_once = PollOnce(&mut checkout);
