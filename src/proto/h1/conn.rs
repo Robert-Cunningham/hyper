@@ -41,7 +41,7 @@ where
     B: Buf,
     T: Http1Transaction,
 {
-    pub(crate) fn new(io: I, timer: Tim) -> Conn<I, B, T> {
+    pub(crate) fn new(io: I) -> Conn<I, B, T> {
         Conn {
             io: Buffered::new(io),
             state: State {
@@ -199,7 +199,7 @@ where
                 req_method: &mut self.state.method,
                 h1_parser_config: self.state.h1_parser_config.clone(),
                 #[cfg(all(feature = "server", feature = "runtime"))]
-                timer: self.state.timer,
+                timer: self.state.timer.clone(),
                 #[cfg(all(feature = "server", feature = "runtime"))]
                 h1_header_read_timeout: self.state.h1_header_read_timeout,
                 #[cfg(all(feature = "server", feature = "runtime"))]
@@ -1059,8 +1059,7 @@ mod tests {
 
         // an empty IO, we'll be skipping and using the read buffer anyways
         let io = tokio_test::io::Builder::new().build();
-        let mut conn =
-            Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(io, Tim::Default);
+        let mut conn = Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(io);
         *conn.io.read_buf_mut() = ::bytes::BytesMut::from(&s[..]);
         conn.state.cached_headers = Some(HeaderMap::with_capacity(2));
 

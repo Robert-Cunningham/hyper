@@ -508,8 +508,10 @@ impl<I, E> Builder<I, E> {
     /// Sets the `Timer` to deal with connection tasks.
     ///
     /// Default is `tokio::spawn`. // TODO: Robert
-    pub fn timer<M>(self, timer: M) -> Builder<I, E> 
-        where M: Timer + Send + Sync {
+    pub fn timer<M>(self, timer: M) -> Builder<I, E>
+    where
+        M: Timer + Send + Sync + 'static,
+    {
         Builder {
             incoming: self.incoming,
             protocol: self.protocol.with_timer(timer),

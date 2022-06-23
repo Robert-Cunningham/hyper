@@ -8,7 +8,7 @@ use std::{
 
 use futures_core::Future;
 
-use crate::rt::{Sleep, Timer};
+use crate::rt::{Interval, Sleep, Timer};
 
 // Either the user provides a timer for background tasks, or we use
 // `tokio::timer`.
@@ -46,7 +46,48 @@ impl Timer for Tim {
             Tim::Timer(ref t) => t.sleep_until(deadline),
         }
     }
+
+    fn interval(&self, period: Duration) -> Box<dyn Interval> {
+        match *self {
+            Tim::Default => Box::new(tokio::time::interval(period)),
+            Tim::Timer(ref t) => t.interval(period),
+        }
+    }
+
+    fn pause(&self) {
+        match *self {
+            Tim::Default => tokio::time::pause(),
+            Tim::Timer(ref t) => t.pause(),
+        }
+    }
+
+    fn advance(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        match *self {
+            Tim::Default => Box::pin(tokio::time::advance(duration)),
+            Tim::Timer(ref t) => t.advance(duration),
+        }
+    }
 }
+
+impl Interval for tokio::time::Interval {
+    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Instant> {
+        tokio::time::Interval::poll_tick(self, cx).map(|a| a.into())
+    }
+}
+
+/*
+pub(crate) struct HasInterval {
+    pub(crate) interval: Pin<Box<tokio::time::Interval>>,
+}
+
+impl Future for HasInterval {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        return self.interval.as_mut().poll(cx);
+    }
+}
+*/
 
 // Use HasSleep to get tokio::time::Sleep to implement Unpin.
 // see https://docs.rs/tokio/latest/tokio/time/struct.Sleep.html

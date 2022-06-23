@@ -350,7 +350,7 @@ where
             dns::SocketAddrs::new(addrs)
         };
 
-        let c = ConnectingTcp::new(addrs, config, &self.timer);
+        let c = ConnectingTcp::new(addrs, config, self.timer.clone());
 
         let sock = c.connect().await?;
 
@@ -486,7 +486,7 @@ struct ConnectingTcp<'a> {
 }
 
 impl<'a> ConnectingTcp<'a> {
-    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config, timer: &'a Tim) -> Self {
+    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config, timer: Tim) -> Self {
         if let Some(fallback_timeout) = config.happy_eyeballs_timeout {
             let (preferred_addrs, fallback_addrs) = remote_addrs
                 .split_by_preference(config.local_address_ipv4, config.local_address_ipv6);
@@ -495,32 +495,34 @@ impl<'a> ConnectingTcp<'a> {
                     preferred: ConnectingTcpRemote::new(
                         preferred_addrs,
                         config.connect_timeout,
-                        *timer,
+                        timer.clone(),
                     ),
                     fallback: None,
                     config,
                 };
             }
 
+            //let t2 = timer.clone();
+
             ConnectingTcp {
                 preferred: ConnectingTcpRemote::new(
                     preferred_addrs,
                     config.connect_timeout,
-                    *timer,
+                    timer.clone(),
                 ),
                 fallback: Some(ConnectingTcpFallback {
-                    delay: timer.sleep(fallback_timeout),
+                    delay: timer.clone().sleep(fallback_timeout),
                     remote: ConnectingTcpRemote::new(
                         fallback_addrs,
                         config.connect_timeout,
-                        *timer,
+                        timer.clone(),
                     ),
                 }),
                 config,
             }
         } else {
             ConnectingTcp {
-                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout, *timer),
+                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout, timer),
                 fallback: None,
                 config,
             }
@@ -967,7 +969,7 @@ mod tests {
                         recv_buffer_size: None,
                     };
                     let connecting_tcp =
-                        ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg, &Tim::Default);
+                        ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg, Tim::Default);
                     let start = Instant::now();
                     Ok::<_, ConnectError>((start, ConnectingTcp::connect(connecting_tcp).await?))
                 })

@@ -587,7 +587,7 @@ impl<E> Http<E> {
     /// Default uses implicit default (like `tokio::spawn`). // TODO: Robert
     pub fn with_timer<M>(self, timer: M) -> Http<E>
     where
-        M: Timer + Send + Sync,
+        M: Timer + Send + Sync + 'static,
     {
         Http {
             exec: self.exec,
@@ -647,7 +647,7 @@ impl<E> Http<E> {
         #[cfg(feature = "http1")]
         macro_rules! h1 {
             () => {{
-                let mut conn = proto::Conn::new(io, Tim::Timer(Arc::new(self.timer)));
+                let mut conn = proto::Conn::new(io);
                 if !self.h1_keep_alive {
                     conn.disable_keep_alive();
                 }
@@ -697,7 +697,7 @@ impl<E> Http<E> {
                     service,
                     &self.h2_builder,
                     self.exec.clone(),
-                    self.timer,
+                    self.timer.clone(),
                 );
                 ProtoServer::H2 { h2 }
             }

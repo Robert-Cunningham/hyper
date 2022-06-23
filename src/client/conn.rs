@@ -967,7 +967,7 @@ impl Builder {
             let proto = match opts.version {
                 #[cfg(feature = "http1")]
                 Proto::Http1 => {
-                    let mut conn = proto::Conn::new(io, opts.timer);
+                    let mut conn = proto::Conn::new(io);
                     conn.set_h1_parser_config(opts.h1_parser_config);
                     if let Some(writev) = opts.h1_writev {
                         if writev {
@@ -1005,14 +1005,9 @@ impl Builder {
                 }
                 #[cfg(feature = "http2")]
                 Proto::Http2 => {
-                    let h2 = proto::h2::client::handshake(
-                        io,
-                        rx,
-                        &opts.h2_builder,
-                        opts.exec.clone(),
-                        opts.timer.clone(),
-                    )
-                    .await?;
+                    let h2 =
+                        proto::h2::client::handshake(io, rx, &opts.h2_builder, opts.exec.clone())
+                            .await?;
                     ProtoClient::H2 { h2 }
                 }
             };

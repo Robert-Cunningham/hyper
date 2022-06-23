@@ -42,7 +42,7 @@ pub(super) fn disabled() -> Recorder {
     Recorder { shared: None }
 }
 
-pub(super) fn channel(ping_pong: PingPong, config: Config, timer: Tim) -> (Recorder, Ponger) {
+pub(super) fn channel(ping_pong: PingPong, config: Config) -> (Recorder, Ponger) {
     debug_assert!(
         config.is_enabled(),
         "ping channel requires bdp or keep-alive config",

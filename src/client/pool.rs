@@ -403,6 +403,8 @@ impl<T: Poolable> PoolInner<T> {
 
     #[cfg(feature = "runtime")]
     fn spawn_idle_interval(&mut self, pool_ref: &Arc<Mutex<PoolInner<T>>>) {
+        use crate::rt::Timer;
+
         let (dur, rx) = {
             if self.idle_interval_ref.is_some() {
                 return;
@@ -904,7 +906,7 @@ mod tests {
             pool.locked().idle.get(&key).map(|entries| entries.len()),
             Some(3)
         );
-        crate::rt::Timer::sleep(&Tim::Default, pool.locked().timeout.unwrap()).await;
+        Tim::Default.sleep(pool.locked().timeout.unwrap()).await;
 
         let mut checkout = pool.checkout(key.clone());
         let poll_once = PollOnce(&mut checkout);
@@ -933,7 +935,8 @@ mod tests {
     #[tokio::test]
     async fn test_pool_timer_removes_expired() {
         let _ = pretty_env_logger::try_init();
-        crate::common::tim::Tim::Default.pause();
+        //crate::common::tim::Tim::Default.pause();
+        tokio::time::pause();
 
         let pool = Pool::new(
             super::Config {
@@ -956,7 +959,8 @@ mod tests {
         );
 
         // Let the timer tick passed the expiration...
-        Tim::Default.advance(Duration::from_millis(30)).await;
+        //Tim::Default.advance(Duration::from_millis(30)).await;
+        tokio::time::advance(Duration::from_millis(30)).await;
         // Yield so the Interval can reap...
         // TODO: Robert. What to do about this?
         tokio::task::yield_now().await;

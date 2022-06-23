@@ -7,6 +7,7 @@
 
 use std::{
     pin::Pin,
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
 
@@ -23,6 +24,10 @@ pub trait Executor<Fut> {
 pub trait Timer {
     fn sleep(&self, duration: Duration) -> Box<dyn Sleep + Unpin>;
     fn sleep_until(&self, deadline: Instant) -> Box<dyn Sleep + Unpin>;
+    fn interval(&self, period: Duration) -> Box<dyn Interval>;
+
+    fn pause(&self);
+    fn advance(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }
 
 //impl Sleep for tokio::time::Sleep {
@@ -65,4 +70,6 @@ pub trait Sleep: Send + Sync + Future<Output = ()> {
     //where
     //Self: Sized;
 }
-pub trait Interval: Send + Sync {}
+pub trait Interval: Send + Sync {
+    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Instant>;
+}
