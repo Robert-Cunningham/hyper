@@ -492,23 +492,35 @@ impl<'a> ConnectingTcp<'a> {
                 .split_by_preference(config.local_address_ipv4, config.local_address_ipv6);
             if fallback_addrs.is_empty() {
                 return ConnectingTcp {
-                    preferred: ConnectingTcpRemote::new(preferred_addrs, config.connect_timeout),
+                    preferred: ConnectingTcpRemote::new(
+                        preferred_addrs,
+                        config.connect_timeout,
+                        *timer,
+                    ),
                     fallback: None,
                     config,
                 };
             }
 
             ConnectingTcp {
-                preferred: ConnectingTcpRemote::new(preferred_addrs, config.connect_timeout),
+                preferred: ConnectingTcpRemote::new(
+                    preferred_addrs,
+                    config.connect_timeout,
+                    *timer,
+                ),
                 fallback: Some(ConnectingTcpFallback {
                     delay: timer.sleep(fallback_timeout),
-                    remote: ConnectingTcpRemote::new(fallback_addrs, config.connect_timeout),
+                    remote: ConnectingTcpRemote::new(
+                        fallback_addrs,
+                        config.connect_timeout,
+                        *timer,
+                    ),
                 }),
                 config,
             }
         } else {
             ConnectingTcp {
-                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout),
+                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout, *timer),
                 fallback: None,
                 config,
             }
@@ -524,15 +536,17 @@ struct ConnectingTcpFallback {
 struct ConnectingTcpRemote {
     addrs: dns::SocketAddrs,
     connect_timeout: Option<Duration>,
+    timer: Tim,
 }
 
 impl ConnectingTcpRemote {
-    fn new(addrs: dns::SocketAddrs, connect_timeout: Option<Duration>) -> Self {
+    fn new(addrs: dns::SocketAddrs, connect_timeout: Option<Duration>, timer: Tim) -> Self {
         let connect_timeout = connect_timeout.map(|t| t / (addrs.len() as u32));
 
         Self {
             addrs,
             connect_timeout,
+            timer,
         }
     }
 }

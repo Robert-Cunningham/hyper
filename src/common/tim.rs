@@ -51,7 +51,7 @@ impl Timer for Tim {
 // Use HasSleep to get tokio::time::Sleep to implement Unpin.
 // see https://docs.rs/tokio/latest/tokio/time/struct.Sleep.html
 pub(crate) struct HasSleep {
-    sleep: Pin<Box<tokio::time::Sleep>>,
+    pub(crate) sleep: Pin<Box<tokio::time::Sleep>>,
 }
 
 impl Future for HasSleep {

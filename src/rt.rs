@@ -28,13 +28,13 @@ pub trait Timer {
 //impl Sleep for tokio::time::Sleep {
 impl Sleep for HasSleep {
     fn is_elapsed(&self) -> bool {
-        self.is_elapsed()
+        self.sleep.is_elapsed()
     }
     fn deadline(&self) -> Instant {
-        self.deadline()
+        self.sleep.deadline().into()
     }
-    fn reset(self: Pin<&mut Self>, deadline: Instant) {
-        self.reset(deadline)
+    fn reset(mut self: Pin<&mut Self>, deadline: Instant) {
+        self.sleep.as_mut().reset(deadline.into())
     }
 
     /*
