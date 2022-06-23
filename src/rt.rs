@@ -19,7 +19,7 @@ pub trait Executor<Fut> {
 }
 
 pub trait Timer {
-    fn sleep(&self, duration: Duration) -> &dyn Sleep;
+    fn sleep(&self, duration: Duration) -> &mut dyn Sleep;
 }
 
 impl Sleep for tokio::time::Sleep {

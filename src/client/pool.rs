@@ -903,7 +903,7 @@ mod tests {
             pool.locked().idle.get(&key).map(|entries| entries.len()),
             Some(3)
         );
-        crate::rt::Timer::sleep(&Tim::Default, pool.locked().timeout.unwrap()).await;
+        (*crate::rt::Timer::sleep(&Tim::Default, pool.locked().timeout.unwrap())).await;
 
         let mut checkout = pool.checkout(key.clone());
         let poll_once = PollOnce(&mut checkout);

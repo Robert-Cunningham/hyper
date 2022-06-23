@@ -17,9 +17,9 @@ impl fmt::Debug for Tim {
 }
 
 impl Timer for Tim {
-    fn sleep(&self, duration: Duration) -> &dyn Sleep {
+    fn sleep(&self, duration: Duration) -> &mut dyn Sleep {
         match *self {
-            Tim::Default => &tokio::time::sleep(duration),
+            Tim::Default => &mut tokio::time::sleep(duration),
             Tim::Timer(ref t) => t.sleep(duration),
         }
     }
