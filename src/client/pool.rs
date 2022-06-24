@@ -5,6 +5,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, Weak};
 
 use std::time::{Duration, Instant};
+//use tokio::time::{Duration, Instant};
 
 use futures_channel::oneshot;
 use tracing::{debug, trace};
@@ -936,10 +937,6 @@ mod tests {
     async fn test_pool_timer_removes_expired() {
         let _ = pretty_env_logger::try_init();
 
-        println!("{:?}", tokio::time::Instant::now());
-        //crate::common::tim::Tim::Default.pause();
-        tokio::time::pause();
-
         let pool = Pool::new(
             super::Config {
                 idle_timeout: Some(Duration::from_millis(10)),
@@ -960,15 +957,11 @@ mod tests {
             Some(3)
         );
 
-        // Let the timer tick passed the expiration...
-        //Tim::Default.advance(Duration::from_millis(30)).await;
-        println!("before wait {:?}", tokio::time::Instant::now());
-        tokio::time::advance(tokio::time::Duration::from_millis(30)).await;
-        println!("after wait {:?}", tokio::time::Instant::now());
+        // Actually sleep instead of tokio::time::pause() / tokio::time::advance() because
+        // the Durations we use internally may not be tokio::time::Duration.
+        Tim::Default.sleep(Duration::from_millis(30)).await;
         // Yield so the Interval can reap...
-        // TODO: Robert. What to do about this?
         tokio::task::yield_now().await;
-        println!("after yield {:?}", tokio::time::Instant::now());
 
         assert!(pool.locked().idle.get(&key).is_none());
     }
