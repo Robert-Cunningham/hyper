@@ -75,20 +75,6 @@ impl Interval for tokio::time::Interval {
     }
 }
 
-/*
-pub(crate) struct HasInterval {
-    pub(crate) interval: Pin<Box<tokio::time::Interval>>,
-}
-
-impl Future for HasInterval {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        return self.interval.as_mut().poll(cx);
-    }
-}
-*/
-
 // Use HasSleep to get tokio::time::Sleep to implement Unpin.
 // see https://docs.rs/tokio/latest/tokio/time/struct.Sleep.html
 pub(crate) struct HasSleep {
@@ -102,12 +88,3 @@ impl Future for HasSleep {
         self.sleep.as_mut().poll(cx)
     }
 }
-
-/*
-Box<dyn Sleep>
-
-the trait `rt::Sleep` cannot be made into an object
-`rt::Sleep` cannot be made into an objectrustcE0038
-rt.rs(37, 54): for a trait to be "object safe" it needs to allow building a vtable to allow the call to be resolvable dynamically; for more information visit <https://doc.rust-lang.org/reference/items/traits.html#object-safety>
-
-*/

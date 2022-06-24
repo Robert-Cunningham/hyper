@@ -41,35 +41,16 @@ impl Sleep for HasSleep {
     fn reset(mut self: Pin<&mut Self>, deadline: Instant) {
         self.sleep.as_mut().reset(deadline.into())
     }
-
-    /*
-    fn new_timeout(
-        deadline: Instant,
-        location: Option<&'static Location<'static>>,
-    ) -> tokio::time::Sleep {
-        // cannot implement since new_timeout doesn't take &self as its first option?
-        tokio::time::Sleep::new_timeout(deadline, location)
-    }
-    */
 }
-
-// If Sleep is Sized, it's not object safe.
-
-// If Sleep is not Sized, we can't await
-// (*Tim::Default.sleep(timeout)).await;
-// the size for values of type `dyn rt::Sleep<Output = ()>` cannot be known at compilation time
-// the trait `Sized` is not implemented for `dyn rt::Sleep<Output = ()>`
-// required because of the requirements on the impl of `std::future::IntoFuture` for `dyn rt::Sleep<Output = ()>`rustcE0277
 
 // The generic version of tokio::time::Sleep, which itself is the output of tokio::time::sleep
 pub trait Sleep: Send + Sync + Future<Output = ()> {
     fn deadline(&self) -> Instant;
     fn reset(self: Pin<&mut Self>, deadline: Instant);
     fn is_elapsed(&self) -> bool;
-    //fn new_timeout(deadline: Instant, location: Option<&'static Location<'static>>) -> Self
-    //where
-    //Self: Sized;
 }
+
+// The generic version of tokio::time::Interval, which itself is the output of tokio::time::sleep
 pub trait Interval: Send + Sync {
     fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Instant>;
 }
