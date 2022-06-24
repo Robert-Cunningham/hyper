@@ -939,9 +939,6 @@ mod tests {
         println!("{:?}", tokio::time::Instant::now());
         //crate::common::tim::Tim::Default.pause();
         tokio::time::pause();
-        println!("{:?}", tokio::time::Instant::now());
-        println!("{:?}", tokio::time::Instant::now());
-        println!("{:?}", tokio::time::Instant::now());
 
         let pool = Pool::new(
             super::Config {
@@ -966,7 +963,7 @@ mod tests {
         // Let the timer tick passed the expiration...
         //Tim::Default.advance(Duration::from_millis(30)).await;
         println!("before wait {:?}", tokio::time::Instant::now());
-        tokio::time::advance(Duration::from_millis(30)).await;
+        tokio::time::advance(tokio::time::Duration::from_millis(30)).await;
         println!("after wait {:?}", tokio::time::Instant::now());
         // Yield so the Interval can reap...
         // TODO: Robert. What to do about this?

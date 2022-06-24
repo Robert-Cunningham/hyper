@@ -70,8 +70,12 @@ impl Timer for Tim {
 }
 
 impl Interval for tokio::time::Interval {
-    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Instant> {
-        tokio::time::Interval::poll_tick(self, cx).map(|a| a.into())
+    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<std::time::Instant> {
+        println!("interval polled");
+        let raw = tokio::time::Interval::poll_tick(self, cx);
+        println!("{:?}", raw);
+
+        raw.map(|a| a.into_std())
     }
 }
 
