@@ -38,7 +38,7 @@ pin_project! {
 }
 
 impl<I, S, F, M, E> Graceful<I, S, F, M, E> {
-    pub(super) fn new(server: Server<I, S, E>, signal: F) -> Self {
+    pub(super) fn new(server: Server<I, S, M, E>, signal: F) -> Self {
         let drain = Some(drain::channel());
         Graceful {
             state: State::Running {
@@ -62,7 +62,7 @@ where
     F: Future<Output = ()>,
     E: ConnStreamExec<<S::Service as HttpService<Body>>::Future, B>,
     E: NewSvcExec<IO, S::Future, S::Service, M, E, GracefulWatcher>,
-    M: Timer
+    M: Timer + Send + Sync
 {
     type Output = crate::Result<()>;
 
@@ -109,7 +109,7 @@ where
     E: ConnStreamExec<S::Future, S::ResBody>,
     S::ResBody: 'static,
     <S::ResBody as HttpBody>::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer
+    M: Timer + Send + Sync
 {
     type Future =
         Watching<UpgradeableConnection<I, S, M, E>, fn(Pin<&mut UpgradeableConnection<I, S, M, E>>)>;
@@ -127,7 +127,7 @@ where
     S::ResBody: HttpBody + 'static,
     <S::ResBody as HttpBody>::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<S::Future, S::ResBody>,
-    M: Timer,
+    M: Timer + Send + Sync,
 {
     conn.graceful_shutdown()
 }

@@ -541,11 +541,11 @@ impl ConnectingTcpRemote {
 }
 
 impl ConnectingTcpRemote {
-    async fn connect(&mut self, config: &Config) -> Result<TcpStream, ConnectError> {
+    async fn connect<M: Timer>(&mut self, config: &Config) -> Result<TcpStream, ConnectError> {
         let mut err = None;
         for addr in &mut self.addrs {
             debug!("connecting to {}", addr);
-            match connect(&addr, config, self.connect_timeout)?.await {
+            match connect::<M>(&addr, config, self.connect_timeout)?.await {
                 Ok(tcp) => {
                     debug!("connected to {}", addr);
                     return Ok(tcp);
@@ -682,15 +682,17 @@ fn connect<M: Timer>(
     })
 }
 
-impl<M> ConnectingTcp<'_, M> {
+impl<M> ConnectingTcp<'_, M> 
+where M: Timer
+{
     async fn connect(mut self) -> Result<TcpStream, ConnectError> {
         match self.fallback {
-            None => self.preferred.connect(self.config).await,
+            None => self.preferred.connect::<M>(self.config).await,
             Some(mut fallback) => {
-                let preferred_fut = self.preferred.connect(self.config);
+                let preferred_fut = self.preferred.connect::<M>(self.config);
                 futures_util::pin_mut!(preferred_fut);
 
-                let fallback_fut = fallback.remote.connect(self.config);
+                let fallback_fut = fallback.remote.connect::<M>(self.config);
                 futures_util::pin_mut!(fallback_fut);
 
                 let fallback_delay = fallback.delay;
@@ -726,8 +728,6 @@ mod tests {
     use std::io;
 
     use ::http::Uri;
-
-    use crate::common::tim::Tim;
 
     use super::super::sealed::{Connect, ConnectSvc};
     use super::{Config, ConnectError, HttpConnector};

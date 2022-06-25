@@ -1324,6 +1324,7 @@ impl Builder {
         self
     }
 
+    /*
     /// Provide a timer to execute background `Connection` tasks.
     pub fn timer<T>(&mut self, timer: T) -> &mut Self
     where
@@ -1332,6 +1333,7 @@ impl Builder {
         self.conn_builder.timer(timer);
         self
     }
+    */
 
     /// Builder a client with this configuration and the default `HttpConnector`.
     #[cfg(feature = "tcp")]

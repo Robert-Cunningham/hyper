@@ -23,10 +23,10 @@ pub struct AddrIncoming<M> {
     tcp_keepalive_timeout: Option<Duration>,
     tcp_nodelay: bool,
     timeout: Option<Pin<Box<dyn Sleep>>>,
-    timer: PhantomData<M>, // TODO: is this a correct use of PhantomData??
+    _marker: PhantomData<M>, // TODO: is this a correct use of PhantomData??
 }
 
-impl<M: Timer> AddrIncoming<M> {
+impl<M> AddrIncoming<M> {
     pub(super) fn new(addr: &SocketAddr) -> crate::Result<Self> {
         let std_listener = StdTcpListener::bind(addr).map_err(crate::Error::new_listen)?;
 
@@ -57,7 +57,7 @@ impl<M: Timer> AddrIncoming<M> {
             tcp_keepalive_timeout: None,
             tcp_nodelay: false,
             timeout: None,
-            timer: Tim::Default,
+            _marker: PhantomData
         })
     }
 
@@ -100,6 +100,9 @@ impl<M: Timer> AddrIncoming<M> {
     pub fn set_sleep_on_errors(&mut self, val: bool) {
         self.sleep_on_errors = val;
     }
+}
+
+impl<M: Timer> AddrIncoming<M> {
 
     fn poll_next_(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<TcpStream>> {
         // Check if a previous timeout is active that was set by IO errors.
@@ -156,7 +159,7 @@ impl<M: Timer> AddrIncoming<M> {
     }
 }
 
-impl<M> Accept for AddrIncoming<M> {
+impl<M: Timer> Accept for AddrIncoming<M> {
     type Conn = TcpStream;
     type Error = io::Error;
 

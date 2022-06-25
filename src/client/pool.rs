@@ -817,7 +817,7 @@ mod tests {
         }
     }
 
-    fn c<T: Poolable, M>(key: Key) -> Connecting<T, M> {
+    fn c<T: Poolable, M: Timer>(key: Key) -> Connecting<T, M> {
         Connecting {
             key,
             pool: WeakOpt::none(),
@@ -828,11 +828,11 @@ mod tests {
         (http::uri::Scheme::HTTP, s.parse().expect("host key"))
     }
 
-    fn pool_no_timer<T, M>() -> Pool<T, M> {
+    fn pool_no_timer<T, M: Timer>() -> Pool<T, M> {
         pool_max_idle_no_timer(::std::usize::MAX)
     }
 
-    fn pool_max_idle_no_timer<T, M>(max_idle: usize) -> Pool<T, M> {
+    fn pool_max_idle_no_timer<T, M: Timer>(max_idle: usize) -> Pool<T, M> {
         let pool = Pool::new(
             super::Config {
                 idle_timeout: Some(Duration::from_millis(100)),

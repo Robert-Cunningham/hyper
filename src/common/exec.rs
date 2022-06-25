@@ -9,7 +9,7 @@ use crate::body::Body;
 use crate::body::HttpBody;
 #[cfg(all(feature = "http2", feature = "server"))]
 use crate::proto::h2::server::H2Stream;
-use crate::rt::Executor;
+use crate::rt::{Executor, Timer};
 #[cfg(all(feature = "server", any(feature = "http1", feature = "http2")))]
 use crate::server::server::{new_svc::NewSvcTask, Watcher};
 #[cfg(all(feature = "server", any(feature = "http1", feature = "http2")))]
@@ -21,7 +21,9 @@ pub trait ConnStreamExec<F, B: HttpBody>: Clone {
 }
 
 #[cfg(all(feature = "server", any(feature = "http1", feature = "http2")))]
-pub trait NewSvcExec<I, N, S: HttpService<Body>, M, E, W: Watcher<I, S, M, E>>: Clone {
+pub trait NewSvcExec<I, N, S: HttpService<Body>, M: Timer, E, W: Watcher<I, S, M, E>>:
+    Clone
+{
     fn execute_new_svc(&mut self, fut: NewSvcTask<I, N, S, M, E, W>);
 }
 
@@ -84,6 +86,7 @@ where
     NewSvcTask<I, N, S, M, E, W>: Future<Output = ()> + Send + 'static,
     S: HttpService<Body>,
     W: Watcher<I, S, M, E>,
+    M: Timer,
 {
     fn execute_new_svc(&mut self, fut: NewSvcTask<I, N, S, M, E, W>) {
         self.execute(fut)
@@ -111,6 +114,7 @@ where
     NewSvcTask<I, N, S, M, E, W>: Future<Output = ()>,
     S: HttpService<Body>,
     W: Watcher<I, S, M, E>,
+    M: Timer,
 {
     fn execute_new_svc(&mut self, fut: NewSvcTask<I, N, S, M, E, W>) {
         self.execute(fut)

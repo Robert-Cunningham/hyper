@@ -640,7 +640,7 @@ impl<E> Http<E> {
         Bd::Error: Into<Box<dyn StdError + Send + Sync>>,
         I: AsyncRead + AsyncWrite + Unpin,
         E: ConnStreamExec<S::Future, Bd>,
-        M: Timer,
+        M: Timer + Send + Sync + 'static,
     {
         #[cfg(feature = "http1")]
         macro_rules! h1 {
@@ -721,7 +721,7 @@ where
     B: HttpBody + 'static,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<S::Future, B>,
-    M: Timer,
+    M: Timer + Send + Sync,
 {
     /// Start a graceful shutdown process for this connection.
     ///
@@ -867,8 +867,8 @@ where
         };
         let mut rewind_io = Rewind::new(io);
         rewind_io.rewind(read_buf);
-        let (builder, exec, timer) = match self.fallback {
-            Fallback::ToHttp2(ref builder, ref exec, ref timer) => (builder, exec, timer),
+        let (builder, exec) = match self.fallback {
+            Fallback::ToHttp2(ref builder, ref exec) => (builder, exec),
             Fallback::Http1Only => unreachable!("upgrade_h2 with Fallback::Http1Only"),
         };
         let h2 = proto::h2::Server::new(rewind_io, dispatch.into_service(), builder, exec.clone());
@@ -897,7 +897,7 @@ where
     B: HttpBody + 'static,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<S::Future, B>,
-    M: Timer,
+    M: Timer + Send + Sync,
 {
     type Output = crate::Result<()>;
 
@@ -978,7 +978,7 @@ where
     B: HttpBody + 'static,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<S::Future, B>,
-    M: Timer,
+    M: Timer + Send + Sync,
 {
     type Output = crate::Result<proto::Dispatched>;
 
@@ -1023,7 +1023,7 @@ mod upgrades {
         B: HttpBody + 'static,
         B::Error: Into<Box<dyn StdError + Send + Sync>>,
         E: ConnStreamExec<S::Future, B>,
-        M: Timer,
+        M: Timer + Send + Sync,
     {
         /// Start a graceful shutdown process for this connection.
         ///
@@ -1042,7 +1042,7 @@ mod upgrades {
         B: HttpBody + 'static,
         B::Error: Into<Box<dyn StdError + Send + Sync>>,
         E: ConnStreamExec<S::Future, B>,
-        M: Timer
+        M: Timer + Send + Sync
     {
         type Output = crate::Result<()>;
 

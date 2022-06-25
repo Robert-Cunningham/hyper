@@ -54,7 +54,7 @@
 //! # }
 //! ```
 
-use std::error::Error as StdError;
+use std::{error::Error as StdError, marker::PhantomData};
 use std::fmt;
 #[cfg(not(all(feature = "http1", feature = "http2")))]
 use std::marker::PhantomData;
@@ -120,11 +120,12 @@ pin_project! {
 ///
 /// This is a shortcut for `Builder::new().handshake(io)`.
 /// See [`client::conn`](crate::client::conn) for more.
-pub async fn handshake<T>(
+pub async fn handshake<T, M>(
     io: T,
-) -> crate::Result<(SendRequest<crate::Body>, Connection<T, crate::Body>)>
+) -> crate::Result<(SendRequest<crate::Body>, Connection<T, crate::Body, M>)>
 where
     T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    M: Timer + Send + Sync + 'static
 {
     Builder::new().handshake(io).await
 }
@@ -151,7 +152,7 @@ where
 ///
 /// After setting options, the builder is used to create a handshake future.
 #[derive(Clone, Debug)]
-pub struct Builder {
+pub struct Builder<M> {
     pub(super) exec: Exec,
     h09_responses: bool,
     h1_parser_config: ParserConfig,
@@ -167,6 +168,7 @@ pub struct Builder {
     #[cfg(feature = "http2")]
     h2_builder: proto::h2::client::Config,
     version: Proto,
+    _marker: PhantomData<M>
 }
 
 #[derive(Clone, Debug)]
@@ -433,6 +435,7 @@ where
     B: HttpBody + Unpin + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+    M: Timer + Send + Sync + 'static
 {
     /// Return the inner IO object, and additional information.
     ///
@@ -551,10 +554,10 @@ where
 
 // ===== impl Builder
 
-impl Builder {
+impl<M> Builder<M> {
     /// Creates a new connection builder.
     #[inline]
-    pub fn new() -> Builder {
+    pub fn new() -> Builder<M> {
         Builder {
             exec: Exec::Default,
             h09_responses: false,
@@ -574,6 +577,7 @@ impl Builder {
             version: Proto::Http1,
             #[cfg(not(feature = "http1"))]
             version: Proto::Http2,
+            _marker: PhantomData
         }
     }
 
@@ -586,6 +590,7 @@ impl Builder {
         self
     }
 
+    /*
     pub fn timer<T>(&mut self, timer: T) -> &mut Builder
     where
         T: Timer + Send + Sync + 'static,
@@ -593,6 +598,7 @@ impl Builder {
         self.timer = Tim::Timer(Arc::new(timer));
         self
     }
+    */
 
     /// Set whether HTTP/0.9 responses should be tolerated.
     ///
@@ -950,12 +956,13 @@ impl Builder {
     pub fn handshake<T, B>(
         &self,
         io: T,
-    ) -> impl Future<Output = crate::Result<(SendRequest<B>, Connection<T, B>)>>
+    ) -> impl Future<Output = crate::Result<(SendRequest<B>, Connection<T, B, M>)>>
     where
         T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
         B: HttpBody + 'static,
         B::Data: Send,
         B::Error: Into<Box<dyn StdError + Send + Sync>>,
+        M: Timer + Send + Sync + 'static
     {
         let opts = self.clone();
 
@@ -1005,7 +1012,7 @@ impl Builder {
                 #[cfg(feature = "http2")]
                 Proto::Http2 => {
                     let h2 =
-                        proto::h2::client::handshake(io, rx, &opts.h2_builder, opts.exec.clone())
+                        proto::h2::client::handshake::<T, B, M>(io, rx, &opts.h2_builder, opts.exec.clone())
                             .await?;
                     ProtoClient::H2 { h2 }
                 }
@@ -1055,6 +1062,7 @@ where
     B: HttpBody + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+    M: Timer + Send + Sync 
 {
     type Output = crate::Result<proto::Dispatched>;
 

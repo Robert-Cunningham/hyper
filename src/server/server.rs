@@ -49,6 +49,7 @@ pin_project! {
 pub struct Builder<I, M, E = Exec> {
     incoming: I,
     protocol: Http_<E>,
+    _marker: PhantomData<M>
 }
 
 // ===== impl Server =====
@@ -60,6 +61,7 @@ impl<I, M> Server<I, M, ()> {
         Builder {
             incoming,
             protocol: Http_::new(),
+            _marker: PhantomData
         }
     }
 }
@@ -69,7 +71,7 @@ impl<I, M> Server<I, M, ()> {
     docsrs,
     doc(cfg(all(feature = "tcp", any(feature = "http1", feature = "http2"))))
 )]
-impl<M> Server<AddrIncoming<M>, M, ()> {
+impl<M> Server<AddrIncoming<M>, M, ()> where M: Timer {
     /// Binds to the provided address, and returns a [`Builder`](Builder).
     ///
     /// # Panics
@@ -99,7 +101,7 @@ impl<M> Server<AddrIncoming<M>, M, ()> {
     docsrs,
     doc(cfg(all(feature = "tcp", any(feature = "http1", feature = "http2"))))
 )]
-impl<S, M, E> Server<AddrIncoming<M>, S, E> {
+impl<S, M, E> Server<AddrIncoming<M>, S, E> where M: Timer{
     /// Returns the local address that this server is bound to.
     pub fn local_addr(&self) -> SocketAddr {
         self.incoming.local_addr()
@@ -159,6 +161,7 @@ where
     where
         F: Future<Output = ()>,
         E: NewSvcExec<IO, S::Future, S::Service, M, E, GracefulWatcher>,
+        M: Send + Sync
     {
         Graceful::new(self, signal)
     }
@@ -166,7 +169,7 @@ where
     fn poll_next_(
         self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Option<crate::Result<Connecting<IO, S::Future, E>>>> {
+    ) -> Poll<Option<crate::Result<Connecting<IO, S::Future, M, E>>>> {
         let me = self.project();
         match ready!(me.make_service.poll_ready_ref(cx)) {
             Ok(()) => (),
@@ -183,6 +186,7 @@ where
                 future: new_fut,
                 io: Some(io),
                 protocol: me.protocol.clone(),
+                _marker: PhantomData,
             })))
         } else {
             Poll::Ready(None)
@@ -221,7 +225,7 @@ where
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<<S::Service as HttpService<Body>>::Future, B>,
     E: NewSvcExec<IO, S::Future, S::Service, M, E, NoopWatcher>,
-    M: Timer,
+    M: Timer + Send + Sync,
 {
     type Output = crate::Result<()>;
 
@@ -246,7 +250,7 @@ impl<I, M, E> Builder<I, M, E> {
     ///
     /// For a more convenient constructor, see [`Server::bind`](Server::bind).
     pub fn new(incoming: I, protocol: Http_<E>) -> Self {
-        Builder { incoming, protocol }
+        Builder { incoming, protocol, _marker: PhantomData }
     }
 
     /// Sets whether to use keep-alive for HTTP/1 connections.
@@ -506,6 +510,7 @@ impl<I, M, E> Builder<I, M, E> {
         Builder {
             incoming: self.incoming,
             protocol: self.protocol.with_executor(executor),
+            _marker: PhantomData
         }
     }
 
@@ -514,11 +519,12 @@ impl<I, M, E> Builder<I, M, E> {
     /// Default is `tokio::spawn`. // TODO: Robert
     pub fn timer<M2>(self, timer: M2) -> Builder<I, M2, E>
     where
-        M: Timer + Send + Sync + 'static,
+        M2: Timer + Send + Sync + 'static,
     {
         Builder {
             incoming: self.incoming,
             protocol: self.protocol.with_timer(timer),
+            _marker: PhantomData
         }
     }
 
@@ -563,12 +569,13 @@ impl<I, M, E> Builder<I, M, E> {
         B::Error: Into<Box<dyn StdError + Send + Sync>>,
         E: NewSvcExec<I::Conn, S::Future, S::Service, M, E, NoopWatcher>,
         E: ConnStreamExec<<S::Service as HttpService<Body>>::Future, B>,
-        M: Timer,
+        M: Timer + Send + Sync,
     {
         Server {
             incoming: self.incoming,
             make_service,
             protocol: self.protocol.clone(),
+            _marker: PhantomData,
         }
     }
 }
@@ -641,7 +648,7 @@ where
     E: ConnStreamExec<S::Future, S::ResBody>,
     S::ResBody: 'static,
     <S::ResBody as HttpBody>::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer,
+    M: Timer + Send + Sync,
 {
     type Future = UpgradeableConnection<I, S, M, E>;
 
@@ -660,9 +667,9 @@ pub(crate) mod new_svc {
     use crate::body::{Body, HttpBody};
     use crate::common::exec::ConnStreamExec;
     use crate::common::{task, Future, Pin, Poll, Unpin};
+    use crate::rt::Timer;
     use crate::service::HttpService;
     use pin_project_lite::pin_project;
-    use crate::rt::Timer;
 
     // This is a `Future<Item=(), Error=()>` spawned to an `Executor` inside
     // the `Server`. By being a nameable type, we can be generic over the
@@ -689,7 +696,7 @@ pub(crate) mod new_svc {
         pub(super) enum State<I, N, S: HttpService<Body>, M: Timer, E, W: Watcher<I, S, M, E>> {
             Connecting {
                 #[pin]
-                connecting: Connecting<I, N, E>,
+                connecting: Connecting<I, N, M, E>,
                 watcher: W,
             },
             Connected {
@@ -700,7 +707,7 @@ pub(crate) mod new_svc {
     }
 
     impl<I, N, S: HttpService<Body>, M: Timer, E, W: Watcher<I, S, M, E>> NewSvcTask<I, N, S, M, E, W> {
-        pub(super) fn new(connecting: Connecting<I, N, E>, watcher: W) -> Self {
+        pub(super) fn new(connecting: Connecting<I, N, M, E>, watcher: W) -> Self {
             NewSvcTask {
                 state: State::Connecting {
                     connecting,
@@ -719,7 +726,7 @@ pub(crate) mod new_svc {
         B: HttpBody + 'static,
         B::Error: Into<Box<dyn StdError + Send + Sync>>,
         E: ConnStreamExec<S::Future, B>,
-        M: Timer,
+        M: Timer + Send + Sync,
         W: Watcher<I, S, M, E>,
     {
         type Output = ();
@@ -790,7 +797,7 @@ where
     B: HttpBody + 'static,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<S::Future, B>,
-    M: Timer
+    M: Timer + Send + Sync
 {
     type Output = Result<Connection<I, S, M, E>, FE>;
 
