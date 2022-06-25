@@ -35,7 +35,6 @@ use super::{Connected, Connection};
 pub struct HttpConnector<R = GaiResolver> {
     config: Arc<Config>,
     resolver: R,
-    timer: Tim,
 }
 
 /// Extra information about the transport when an HttpConnector is used.
@@ -486,17 +485,13 @@ struct ConnectingTcp<'a, M: Timer> {
 }
 
 impl<'a, M> ConnectingTcp<'a, M> {
-    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config, timer: Tim) -> Self {
+    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config) -> Self {
         if let Some(fallback_timeout) = config.happy_eyeballs_timeout {
             let (preferred_addrs, fallback_addrs) = remote_addrs
                 .split_by_preference(config.local_address_ipv4, config.local_address_ipv6);
             if fallback_addrs.is_empty() {
                 return ConnectingTcp {
-                    preferred: ConnectingTcpRemote::new(
-                        preferred_addrs,
-                        config.connect_timeout,
-                        timer.clone(),
-                    ),
+                    preferred: ConnectingTcpRemote::new(preferred_addrs, config.connect_timeout),
                     fallback: None,
                     config,
                 };
@@ -505,24 +500,16 @@ impl<'a, M> ConnectingTcp<'a, M> {
             //let t2 = timer.clone();
 
             ConnectingTcp {
-                preferred: ConnectingTcpRemote::new(
-                    preferred_addrs,
-                    config.connect_timeout,
-                    timer.clone(),
-                ),
+                preferred: ConnectingTcpRemote::new(preferred_addrs, config.connect_timeout),
                 fallback: Some(ConnectingTcpFallback {
                     delay: M::sleep(fallback_timeout),
-                    remote: ConnectingTcpRemote::new(
-                        fallback_addrs,
-                        config.connect_timeout,
-                        timer.clone(),
-                    ),
+                    remote: ConnectingTcpRemote::new(fallback_addrs, config.connect_timeout),
                 }),
                 config,
             }
         } else {
             ConnectingTcp {
-                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout, timer),
+                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout),
                 fallback: None,
                 config,
             }

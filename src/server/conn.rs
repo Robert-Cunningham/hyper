@@ -150,7 +150,7 @@ type Http1Dispatcher<T, B, S> =
 type Http1Dispatcher<T, B, S> = (Never, PhantomData<(T, Box<Pin<B>>, Box<Pin<S>>)>);
 
 #[cfg(feature = "http2")]
-type Http2Server<T, B, S, E, M> = proto::h2::Server<Rewind<T>, S, B, E, M>;
+type Http2Server<T, B, S, E> = proto::h2::Server<Rewind<T>, S, B, E>;
 
 #[cfg(all(not(feature = "http2"), feature = "http1"))]
 type Http2Server<T, B, S, E> = (
@@ -161,7 +161,7 @@ type Http2Server<T, B, S, E> = (
 #[cfg(any(feature = "http1", feature = "http2"))]
 pin_project! {
     #[project = ProtoServerProj]
-    pub(super) enum ProtoServer<T, B, S, E = Exec, M = Tim>
+    pub(super) enum ProtoServer<T, B, S, E = Exec>
     where
         S: HttpService<Body>,
         B: HttpBody,
@@ -172,7 +172,7 @@ pin_project! {
         },
         H2 {
             #[pin]
-            h2: Http2Server<T, B, S, E, M>,
+            h2: Http2Server<T, B, S, E>,
         },
     }
 }

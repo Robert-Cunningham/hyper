@@ -75,13 +75,12 @@ impl Default for Config {
 }
 
 pin_project! {
-    pub(crate) struct Server<T, S, B, E, M>
+    pub(crate) struct Server<T, S, B, E>
     where
         S: HttpService<Body>,
         B: HttpBody,
     {
         exec: E,
-        timer: M,
         service: S,
         state: State<T, B>,
     }
@@ -108,22 +107,15 @@ where
     closing: Option<crate::Error>,
 }
 
-impl<T, S, B, E, M> Server<T, S, B, E, M>
+impl<T, S, B, E> Server<T, S, B, E>
 where
     T: AsyncRead + AsyncWrite + Unpin,
     S: HttpService<Body, ResBody = B>,
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
     B: HttpBody + 'static,
     E: ConnStreamExec<S::Future, B>,
-    M: Timer + Send + Sync + 'static,
 {
-    pub(crate) fn new(
-        io: T,
-        service: S,
-        config: &Config,
-        exec: E,
-        timer: M,
-    ) -> Server<T, S, B, E, M> {
+    pub(crate) fn new(io: T, service: S, config: &Config, exec: E) -> Server<T, S, B, E> {
         let mut builder = h2::server::Builder::default();
         builder
             .initial_window_size(config.initial_stream_window_size)
@@ -159,7 +151,6 @@ where
 
         Server {
             exec,
-            timer,
             state: State::Handshaking {
                 ping_config,
                 hs: handshake,
@@ -188,14 +179,13 @@ where
     }
 }
 
-impl<T, S, B, E, M> Future for Server<T, S, B, E, M>
+impl<T, S, B, E> Future for Server<T, S, B, E>
 where
     T: AsyncRead + AsyncWrite + Unpin,
     S: HttpService<Body, ResBody = B>,
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
     B: HttpBody + 'static,
     E: ConnStreamExec<S::Future, B>,
-    M: Timer + Send + Sync + 'static,
 {
     type Output = crate::Result<Dispatched>;
 

@@ -1,5 +1,6 @@
 use std::fmt;
 use std::io;
+use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpListener as StdTcpListener};
 use std::time::Duration;
 
@@ -22,7 +23,7 @@ pub struct AddrIncoming<M> {
     tcp_keepalive_timeout: Option<Duration>,
     tcp_nodelay: bool,
     timeout: Option<Pin<Box<dyn Sleep>>>,
-    timer: Tim,
+    timer: PhantomData<M>, // TODO: is this a correct use of PhantomData??
 }
 
 impl<M: Timer> AddrIncoming<M> {

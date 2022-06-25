@@ -67,14 +67,14 @@ impl<I> Server<I, ()> {
     docsrs,
     doc(cfg(all(feature = "tcp", any(feature = "http1", feature = "http2"))))
 )]
-impl Server<AddrIncoming, ()> {
+impl<M> Server<AddrIncoming<M>, ()> {
     /// Binds to the provided address, and returns a [`Builder`](Builder).
     ///
     /// # Panics
     ///
     /// This method will panic if binding to the address fails. For a method
     /// to bind to an address and return a `Result`, see `Server::try_bind`.
-    pub fn bind(addr: &SocketAddr) -> Builder<AddrIncoming> {
+    pub fn bind(addr: &SocketAddr) -> Builder<AddrIncoming<M>> {
         let incoming = AddrIncoming::new(addr).unwrap_or_else(|e| {
             panic!("error binding to {}: {}", addr, e);
         });
@@ -82,12 +82,12 @@ impl Server<AddrIncoming, ()> {
     }
 
     /// Tries to bind to the provided address, and returns a [`Builder`](Builder).
-    pub fn try_bind(addr: &SocketAddr) -> crate::Result<Builder<AddrIncoming>> {
+    pub fn try_bind(addr: &SocketAddr) -> crate::Result<Builder<AddrIncoming<M>>> {
         AddrIncoming::new(addr).map(Server::builder)
     }
 
     /// Create a new instance from a `std::net::TcpListener` instance.
-    pub fn from_tcp(listener: StdTcpListener) -> Result<Builder<AddrIncoming>, crate::Error> {
+    pub fn from_tcp(listener: StdTcpListener) -> Result<Builder<AddrIncoming<M>>, crate::Error> {
         AddrIncoming::from_std(listener).map(Server::builder)
     }
 }
@@ -97,7 +97,7 @@ impl Server<AddrIncoming, ()> {
     docsrs,
     doc(cfg(all(feature = "tcp", any(feature = "http1", feature = "http2"))))
 )]
-impl<S, E> Server<AddrIncoming, S, E> {
+impl<S, E, M> Server<AddrIncoming<M>, S, E> {
     /// Returns the local address that this server is bound to.
     pub fn local_addr(&self) -> SocketAddr {
         self.incoming.local_addr()
@@ -573,7 +573,7 @@ impl<I, E> Builder<I, E> {
     docsrs,
     doc(cfg(all(feature = "tcp", any(feature = "http1", feature = "http2"))))
 )]
-impl<E> Builder<AddrIncoming, E> {
+impl<E, M> Builder<AddrIncoming<M>, E> {
     /// Set whether TCP keepalive messages are enabled on accepted connections.
     ///
     /// If `None` is specified, keepalive is disabled, otherwise the duration
