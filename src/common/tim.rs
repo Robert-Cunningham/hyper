@@ -1,14 +1,5 @@
-use std::{
-    fmt,
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-    time::{Duration, Instant},
-};
-
-use futures_core::Future;
-
-use crate::rt::{Interval, Sleep, Timer};
+use crate::rt::Timer;
+use std::sync::Arc;
 
 /*
 // Either the user provides a timer for background tasks, or we use

@@ -77,8 +77,6 @@ pub(crate) struct ParseContext<'a> {
     req_method: &'a mut Option<Method>,
     h1_parser_config: ParserConfig,
     #[cfg(all(feature = "server", feature = "runtime"))]
-    timer: Tim,
-    #[cfg(all(feature = "server", feature = "runtime"))]
     h1_header_read_timeout: Option<Duration>,
     #[cfg(all(feature = "server", feature = "runtime"))]
     h1_header_read_timeout_fut: &'a mut Option<Pin<Box<dyn Sleep>>>,

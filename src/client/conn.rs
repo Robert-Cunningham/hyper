@@ -87,8 +87,8 @@ use crate::upgrade::Upgraded;
 use crate::{Body, Request, Response};
 
 #[cfg(feature = "http1")]
-type Http1Dispatcher<T, B> =
-    proto::dispatch::Dispatcher<proto::dispatch::Client<B>, B, T, proto::h1::ClientTransaction>;
+type Http1Dispatcher<T, B, M> =
+    proto::dispatch::Dispatcher<proto::dispatch::Client<B>, B, T, proto::h1::ClientTransaction, M>;
 
 #[cfg(not(feature = "http1"))]
 type Http1Dispatcher<T, B> = (Never, PhantomData<(T, Pin<Box<B>>)>);
@@ -101,13 +101,13 @@ type Http2ClientTask<B> = (Never, PhantomData<Pin<Box<B>>>);
 
 pin_project! {
     #[project = ProtoClientProj]
-    enum ProtoClient<T, B>
+    enum ProtoClient<T, B, M>
     where
         B: HttpBody,
     {
         H1 {
             #[pin]
-            h1: Http1Dispatcher<T, B>,
+            h1: Http1Dispatcher<T, B, M>,
         },
         H2 {
             #[pin]
@@ -139,12 +139,12 @@ pub struct SendRequest<B> {
 /// In most cases, this should just be spawned into an executor, so that it
 /// can process incoming and outgoing messages, notice hangups, and the like.
 #[must_use = "futures do nothing unless polled"]
-pub struct Connection<T, B>
+pub struct Connection<T, B, M>
 where
     T: AsyncRead + AsyncWrite + Send + 'static,
     B: HttpBody + 'static,
 {
-    inner: Option<ProtoClient<T, B>>,
+    inner: Option<ProtoClient<T, B, M>>,
 }
 
 /// A builder to configure an HTTP connection.
@@ -153,7 +153,6 @@ where
 #[derive(Clone, Debug)]
 pub struct Builder {
     pub(super) exec: Exec,
-    pub(super) timer: Tim,
     h09_responses: bool,
     h1_parser_config: ParserConfig,
     h1_writev: Option<bool>,
@@ -428,7 +427,7 @@ impl<B> Clone for Http2SendRequest<B> {
 
 // ===== impl Connection
 
-impl<T, B> Connection<T, B>
+impl<T, B, M> Connection<T, B, M>
 where
     T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     B: HttpBody + Unpin + Send + 'static,
@@ -511,12 +510,13 @@ where
     }
 }
 
-impl<T, B> Future for Connection<T, B>
+impl<T, B, M> Future for Connection<T, B, M>
 where
     T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     B: HttpBody + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+    M: Timer + Send + Sync + 'static,
 {
     type Output = crate::Result<()>;
 
@@ -539,7 +539,7 @@ where
     }
 }
 
-impl<T, B> fmt::Debug for Connection<T, B>
+impl<T, B, M> fmt::Debug for Connection<T, B, M>
 where
     T: AsyncRead + AsyncWrite + fmt::Debug + Send + 'static,
     B: HttpBody + 'static,
@@ -557,7 +557,6 @@ impl Builder {
     pub fn new() -> Builder {
         Builder {
             exec: Exec::Default,
-            timer: Tim::Default,
             h09_responses: false,
             h1_writev: None,
             h1_read_buf_exact_size: None,
@@ -1050,7 +1049,7 @@ impl fmt::Debug for ResponseFuture {
 
 // ===== impl ProtoClient
 
-impl<T, B> Future for ProtoClient<T, B>
+impl<T, B, M> Future for ProtoClient<T, B, M>
 where
     T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
     B: HttpBody + Send + 'static,
@@ -1083,7 +1082,7 @@ trait AssertSendSync: Send + Sync {}
 impl<B: Send> AssertSendSync for SendRequest<B> {}
 
 #[doc(hidden)]
-impl<T: Send, B: Send> AssertSend for Connection<T, B>
+impl<T: Send, B: Send, M: Send> AssertSend for Connection<T, B, M>
 where
     T: AsyncRead + AsyncWrite + Send + 'static,
     B: HttpBody + 'static,
@@ -1092,7 +1091,7 @@ where
 }
 
 #[doc(hidden)]
-impl<T: Send + Sync, B: Send + Sync> AssertSendSync for Connection<T, B>
+impl<T: Send + Sync, B: Send + Sync, M: Send + Sync> AssertSendSync for Connection<T, B, M>
 where
     T: AsyncRead + AsyncWrite + Send + 'static,
     B: HttpBody + 'static,

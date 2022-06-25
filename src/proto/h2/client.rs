@@ -19,6 +19,7 @@ use crate::ext::Protocol;
 use crate::headers;
 use crate::proto::h2::UpgradedSendStream;
 use crate::proto::Dispatched;
+use crate::rt::Timer;
 use crate::upgrade::Upgraded;
 use crate::{Body, Request, Response};
 
@@ -105,7 +106,7 @@ fn new_ping_config(config: &Config) -> ping::Config {
     }
 }
 
-pub(crate) async fn handshake<T, B>(
+pub(crate) async fn handshake<T, B, M>(
     io: T,
     req_rx: ClientRx<B>,
     config: &Config,
@@ -115,6 +116,7 @@ where
     T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
     B: HttpBody,
     B::Data: Send + 'static,
+    M: Timer,
 {
     let (h2_tx, mut conn) = new_builder(config)
         .handshake::<_, SendBuf<B::Data>>(io)
@@ -138,7 +140,7 @@ where
 
     let (conn, ping) = if ping_config.is_enabled() {
         let pp = conn.ping_pong().expect("conn.ping_pong");
-        let (recorder, mut ponger) = ping::channel(pp, ping_config);
+        let (recorder, mut ponger) = ping::channel::<M>(pp, ping_config);
 
         let conn = future::poll_fn(move |cx| {
             match ponger.poll(cx) {

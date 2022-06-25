@@ -1525,7 +1525,6 @@ mod tests {
             ParseContext {
                 cached_headers: &mut None,
                 req_method: &mut method,
-                timer: Tim::Default,
                 h1_parser_config: Default::default(),
                 #[cfg(feature = "runtime")]
                 h1_header_read_timeout: None,
@@ -1561,7 +1560,6 @@ mod tests {
         let ctx = ParseContext {
             cached_headers: &mut None,
             req_method: &mut Some(crate::Method::GET),
-            timer: Tim::Default,
             h1_parser_config: Default::default(),
             #[cfg(feature = "runtime")]
             h1_header_read_timeout: None,
@@ -1592,7 +1590,6 @@ mod tests {
         let ctx = ParseContext {
             cached_headers: &mut None,
             req_method: &mut None,
-            timer: Tim::Default,
             h1_parser_config: Default::default(),
             #[cfg(feature = "runtime")]
             h1_header_read_timeout: None,
@@ -1621,7 +1618,6 @@ mod tests {
         let ctx = ParseContext {
             cached_headers: &mut None,
             req_method: &mut Some(crate::Method::GET),
-            timer: Tim::Default,
             h1_parser_config: Default::default(),
             #[cfg(feature = "runtime")]
             h1_header_read_timeout: None,
@@ -1653,7 +1649,6 @@ mod tests {
             cached_headers: &mut None,
             req_method: &mut Some(crate::Method::GET),
             h1_parser_config: Default::default(),
-            timer: Tim::Default,
             #[cfg(feature = "runtime")]
             h1_header_read_timeout: None,
             #[cfg(feature = "runtime")]
@@ -1688,7 +1683,6 @@ mod tests {
             cached_headers: &mut None,
             req_method: &mut Some(crate::Method::GET),
             h1_parser_config,
-            timer: Tim::Default,
             #[cfg(feature = "runtime")]
             h1_header_read_timeout: None,
             #[cfg(feature = "runtime")]
@@ -1720,7 +1714,6 @@ mod tests {
             cached_headers: &mut None,
             req_method: &mut Some(crate::Method::GET),
             h1_parser_config: Default::default(),
-            timer: Tim::Default,
             #[cfg(feature = "runtime")]
             h1_header_read_timeout: None,
             #[cfg(feature = "runtime")]
@@ -1747,7 +1740,6 @@ mod tests {
             cached_headers: &mut None,
             req_method: &mut None,
             h1_parser_config: Default::default(),
-            timer: Tim::Default,
             #[cfg(feature = "runtime")]
             h1_header_read_timeout: None,
             #[cfg(feature = "runtime")]
@@ -1795,7 +1787,6 @@ mod tests {
                     cached_headers: &mut None,
                     req_method: &mut None,
                     h1_parser_config: Default::default(),
-                    timer: Tim::Default,
                     #[cfg(feature = "runtime")]
                     h1_header_read_timeout: None,
                     #[cfg(feature = "runtime")]
@@ -1824,7 +1815,6 @@ mod tests {
                     cached_headers: &mut None,
                     req_method: &mut None,
                     h1_parser_config: Default::default(),
-                    timer: Tim::Default,
                     #[cfg(feature = "runtime")]
                     h1_header_read_timeout: None,
                     #[cfg(feature = "runtime")]
@@ -2062,7 +2052,6 @@ mod tests {
                     cached_headers: &mut None,
                     req_method: &mut Some(Method::GET),
                     h1_parser_config: Default::default(),
-                    timer: Tim::Default,
                     #[cfg(feature = "runtime")]
                     h1_header_read_timeout: None,
                     #[cfg(feature = "runtime")]
@@ -2091,7 +2080,6 @@ mod tests {
                     cached_headers: &mut None,
                     req_method: &mut Some(m),
                     h1_parser_config: Default::default(),
-                    timer: Tim::Default,
                     #[cfg(feature = "runtime")]
                     h1_header_read_timeout: None,
                     #[cfg(feature = "runtime")]
@@ -2120,7 +2108,6 @@ mod tests {
                     cached_headers: &mut None,
                     req_method: &mut Some(Method::GET),
                     h1_parser_config: Default::default(),
-                    timer: Tim::Default,
                     #[cfg(feature = "runtime")]
                     h1_header_read_timeout: None,
                     #[cfg(feature = "runtime")]
@@ -2626,7 +2613,6 @@ mod tests {
                 cached_headers: &mut None,
                 req_method: &mut Some(Method::GET),
                 h1_parser_config: Default::default(),
-                timer: Tim::Default,
                 #[cfg(feature = "runtime")]
                 h1_header_read_timeout: None,
                 #[cfg(feature = "runtime")]
@@ -2719,7 +2705,6 @@ mod tests {
                     cached_headers: &mut headers,
                     req_method: &mut None,
                     h1_parser_config: Default::default(),
-                    timer: Tim::Default,
                     #[cfg(feature = "runtime")]
                     h1_header_read_timeout: None,
                     #[cfg(feature = "runtime")]
@@ -2768,7 +2753,6 @@ mod tests {
                     cached_headers: &mut headers,
                     req_method: &mut None,
                     h1_parser_config: Default::default(),
-                    timer: Tim::Default,
                     #[cfg(feature = "runtime")]
                     h1_header_read_timeout: None,
                     #[cfg(feature = "runtime")]

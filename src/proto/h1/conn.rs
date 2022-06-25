@@ -19,6 +19,7 @@ use crate::common::{task, Pin, Poll, Unpin};
 use crate::headers::connection_keep_alive;
 use crate::proto::{BodyLength, MessageHead};
 use crate::rt::Sleep;
+use crate::rt::Timer;
 
 const H2_PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
@@ -29,19 +30,21 @@ const H2_PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 /// The connection will determine when a message begins and ends as well as
 /// determine if this connection can be kept alive after the message,
 /// or if it is complete.
-pub(crate) struct Conn<I, B, T> {
+pub(crate) struct Conn<I, B, T, M> {
     io: Buffered<I, EncodedBuf<B>>,
     state: State,
     _marker: PhantomData<fn(T)>,
+    _marker2: PhantomData<M>,
 }
 
-impl<I, B, T> Conn<I, B, T>
+impl<I, B, T, M> Conn<I, B, T, M>
 where
     I: AsyncRead + AsyncWrite + Unpin,
     B: Buf,
     T: Http1Transaction,
+    M: Timer,
 {
-    pub(crate) fn new(io: I) -> Conn<I, B, T> {
+    pub(crate) fn new(io: I) -> Conn<I, B, T, M> {
         Conn {
             io: Buffered::new(io),
             state: State {
@@ -51,8 +54,6 @@ where
                 keep_alive: KA::Busy,
                 method: None,
                 h1_parser_config: ParserConfig::default(),
-                #[cfg(all(feature = "server", feature = "runtime"))]
-                timer: Tim::Default,
                 #[cfg(all(feature = "server", feature = "runtime"))]
                 h1_header_read_timeout: None,
                 #[cfg(all(feature = "server", feature = "runtime"))]
@@ -77,6 +78,7 @@ where
                 version: Version::HTTP_11,
             },
             _marker: PhantomData,
+            _marker2: PhantomData,
         }
     }
 
@@ -192,14 +194,12 @@ where
         debug_assert!(self.can_read_head());
         trace!("Conn::read_head");
 
-        let msg = match ready!(self.io.parse::<T>(
+        let msg = match ready!(self.io.parse::<T, M>(
             cx,
             ParseContext {
                 cached_headers: &mut self.state.cached_headers,
                 req_method: &mut self.state.method,
                 h1_parser_config: self.state.h1_parser_config.clone(),
-                #[cfg(all(feature = "server", feature = "runtime"))]
-                timer: self.state.timer.clone(),
                 #[cfg(all(feature = "server", feature = "runtime"))]
                 h1_header_read_timeout: self.state.h1_header_read_timeout,
                 #[cfg(all(feature = "server", feature = "runtime"))]
@@ -794,7 +794,7 @@ where
     }
 }
 
-impl<I, B: Buf, T> fmt::Debug for Conn<I, B, T> {
+impl<I, B: Buf, T, M> fmt::Debug for Conn<I, B, T, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Conn")
             .field("state", &self.state)
@@ -804,7 +804,7 @@ impl<I, B: Buf, T> fmt::Debug for Conn<I, B, T> {
 }
 
 // B and T are never pinned
-impl<I: Unpin, B, T> Unpin for Conn<I, B, T> {}
+impl<I: Unpin, B, T, M> Unpin for Conn<I, B, T, M> {}
 
 struct State {
     allow_half_close: bool,
@@ -821,8 +821,6 @@ struct State {
     /// a body or not.
     method: Option<Method>,
     h1_parser_config: ParserConfig,
-    #[cfg(all(feature = "server", feature = "runtime"))]
-    timer: Tim,
     #[cfg(all(feature = "server", feature = "runtime"))]
     h1_header_read_timeout: Option<Duration>,
     #[cfg(all(feature = "server", feature = "runtime"))]

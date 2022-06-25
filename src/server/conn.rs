@@ -53,7 +53,6 @@ use std::time::Duration;
 
 #[cfg(feature = "http2")]
 use crate::common::io::Rewind;
-use crate::common::tim::Tim;
 #[cfg(all(feature = "http1", feature = "http2"))]
 use crate::error::{Kind, Parse};
 #[cfg(feature = "http1")]
@@ -96,7 +95,6 @@ cfg_feature! {
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
 pub struct Http<E = Exec> {
     pub(crate) exec: E,
-    pub(crate) timer: Tim,
     h1_half_close: bool,
     h1_keep_alive: bool,
     h1_title_case_headers: bool,
@@ -133,24 +131,25 @@ pin_project! {
     /// Polling this future will drive HTTP forward.
     #[must_use = "futures do nothing unless polled"]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-    pub struct Connection<T, S, E = Exec>
+    pub struct Connection<T, S, M, E = Exec>
     where
         S: HttpService<Body>,
+        M: Timer,
     {
-        pub(super) conn: Option<ProtoServer<T, S::ResBody, S, E>>,
+        pub(super) conn: Option<ProtoServer<T, S::ResBody, S, M, E>>,
         fallback: Fallback<E>,
     }
 }
 
 #[cfg(feature = "http1")]
-type Http1Dispatcher<T, B, S> =
-    proto::h1::Dispatcher<proto::h1::dispatch::Server<S, Body>, B, T, proto::ServerTransaction>;
+type Http1Dispatcher<T, B, S, M> =
+    proto::h1::Dispatcher<proto::h1::dispatch::Server<S, Body>, B, T, proto::ServerTransaction, M>;
 
 #[cfg(all(not(feature = "http1"), feature = "http2"))]
 type Http1Dispatcher<T, B, S> = (Never, PhantomData<(T, Box<Pin<B>>, Box<Pin<S>>)>);
 
 #[cfg(feature = "http2")]
-type Http2Server<T, B, S, E> = proto::h2::Server<Rewind<T>, S, B, E>;
+type Http2Server<T, B, S, M, E> = proto::h2::Server<Rewind<T>, S, B, M, E>;
 
 #[cfg(all(not(feature = "http2"), feature = "http1"))]
 type Http2Server<T, B, S, E> = (
@@ -161,18 +160,19 @@ type Http2Server<T, B, S, E> = (
 #[cfg(any(feature = "http1", feature = "http2"))]
 pin_project! {
     #[project = ProtoServerProj]
-    pub(super) enum ProtoServer<T, B, S, E = Exec>
+    pub(super) enum ProtoServer<T, B, S, M, E = Exec>
     where
         S: HttpService<Body>,
         B: HttpBody,
+        M: Timer,
     {
         H1 {
             #[pin]
-            h1: Http1Dispatcher<T, B, S>,
+            h1: Http1Dispatcher<T, B, S, M>,
         },
         H2 {
             #[pin]
-            h2: Http2Server<T, B, S, E>,
+            h2: Http2Server<T, B, S, M, E>,
         },
     }
 }
@@ -180,7 +180,7 @@ pin_project! {
 #[cfg(all(feature = "http1", feature = "http2"))]
 #[derive(Clone, Debug)]
 enum Fallback<E> {
-    ToHttp2(proto::h2::server::Config, E, Tim),
+    ToHttp2(proto::h2::server::Config, E),
     Http1Only,
 }
 
@@ -236,7 +236,6 @@ impl Http {
     pub fn new() -> Http {
         Http {
             exec: Exec::Default,
-            timer: Tim::Default,
             h1_half_close: false,
             h1_keep_alive: true,
             h1_title_case_headers: false,
@@ -566,7 +565,6 @@ impl<E> Http<E> {
     pub fn with_executor<E2>(self, exec: E2) -> Http<E2> {
         Http {
             exec,
-            timer: self.timer,
             h1_half_close: self.h1_half_close,
             h1_keep_alive: self.h1_keep_alive,
             h1_title_case_headers: self.h1_title_case_headers,
@@ -591,7 +589,6 @@ impl<E> Http<E> {
     {
         Http {
             exec: self.exec,
-            timer: Tim::Timer(Arc::new(timer)),
             h1_half_close: self.h1_half_close,
             h1_keep_alive: self.h1_keep_alive,
             h1_title_case_headers: self.h1_title_case_headers,
@@ -635,7 +632,7 @@ impl<E> Http<E> {
     /// # }
     /// # fn main() {}
     /// ```
-    pub fn serve_connection<S, I, Bd>(&self, io: I, service: S) -> Connection<I, S, E>
+    pub fn serve_connection<S, I, Bd, M>(&self, io: I, service: S) -> Connection<I, S, M, E>
     where
         S: HttpService<Body, ResBody = Bd>,
         S::Error: Into<Box<dyn StdError + Send + Sync>>,
@@ -643,6 +640,7 @@ impl<E> Http<E> {
         Bd::Error: Into<Box<dyn StdError + Send + Sync>>,
         I: AsyncRead + AsyncWrite + Unpin,
         E: ConnStreamExec<S::Future, Bd>,
+        M: Timer,
     {
         #[cfg(feature = "http1")]
         macro_rules! h1 {
@@ -692,13 +690,8 @@ impl<E> Http<E> {
             #[cfg(feature = "http2")]
             ConnectionMode::H2Only => {
                 let rewind_io = Rewind::new(io);
-                let h2 = proto::h2::Server::new(
-                    rewind_io,
-                    service,
-                    &self.h2_builder,
-                    self.exec.clone(),
-                    self.timer.clone(),
-                );
+                let h2 =
+                    proto::h2::Server::new(rewind_io, service, &self.h2_builder, self.exec.clone());
                 ProtoServer::H2 { h2 }
             }
         };
@@ -707,11 +700,7 @@ impl<E> Http<E> {
             conn: Some(proto),
             #[cfg(all(feature = "http1", feature = "http2"))]
             fallback: if self.mode == ConnectionMode::Fallback {
-                Fallback::ToHttp2(
-                    self.h2_builder.clone(),
-                    self.exec.clone(),
-                    self.timer.clone(),
-                )
+                Fallback::ToHttp2(self.h2_builder.clone(), self.exec.clone())
             } else {
                 Fallback::Http1Only
             },
@@ -724,7 +713,7 @@ impl<E> Http<E> {
 // ===== impl Connection =====
 
 #[cfg(any(feature = "http1", feature = "http2"))]
-impl<I, B, S, E> Connection<I, S, E>
+impl<I, B, S, M, E> Connection<I, S, M, E>
 where
     S: HttpService<Body, ResBody = B>,
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
@@ -732,6 +721,7 @@ where
     B: HttpBody + 'static,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<S::Future, B>,
+    M: Timer,
 {
     /// Start a graceful shutdown process for this connection.
     ///
@@ -881,13 +871,7 @@ where
             Fallback::ToHttp2(ref builder, ref exec, ref timer) => (builder, exec, timer),
             Fallback::Http1Only => unreachable!("upgrade_h2 with Fallback::Http1Only"),
         };
-        let h2 = proto::h2::Server::new(
-            rewind_io,
-            dispatch.into_service(),
-            builder,
-            exec.clone(),
-            timer.clone(),
-        );
+        let h2 = proto::h2::Server::new(rewind_io, dispatch.into_service(), builder, exec.clone());
 
         debug_assert!(self.conn.is_none());
         self.conn = Some(ProtoServer::H2 { h2 });
@@ -896,7 +880,7 @@ where
     /// Enable this connection to support higher-level HTTP upgrades.
     ///
     /// See [the `upgrade` module](crate::upgrade) for more.
-    pub fn with_upgrades(self) -> UpgradeableConnection<I, S, E>
+    pub fn with_upgrades(self) -> UpgradeableConnection<I, S, M, E>
     where
         I: Send,
     {
@@ -905,7 +889,7 @@ where
 }
 
 #[cfg(any(feature = "http1", feature = "http2"))]
-impl<I, B, S, E> Future for Connection<I, S, E>
+impl<I, B, S, M, E> Future for Connection<I, S, M, E>
 where
     S: HttpService<Body, ResBody = B>,
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
@@ -913,6 +897,7 @@ where
     B: HttpBody + 'static,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<S::Future, B>,
+    M: Timer,
 {
     type Output = crate::Result<()>;
 
@@ -952,9 +937,10 @@ where
 }
 
 #[cfg(any(feature = "http1", feature = "http2"))]
-impl<I, S> fmt::Debug for Connection<I, S>
+impl<I, S, M> fmt::Debug for Connection<I, S, M>
 where
     S: HttpService<Body>,
+    M: Timer,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Connection").finish()
@@ -984,7 +970,7 @@ impl Default for ConnectionMode {
 // ===== impl ProtoServer =====
 
 #[cfg(any(feature = "http1", feature = "http2"))]
-impl<T, B, S, E> Future for ProtoServer<T, B, S, E>
+impl<T, B, S, M, E> Future for ProtoServer<T, B, S, M, E>
 where
     T: AsyncRead + AsyncWrite + Unpin,
     S: HttpService<Body, ResBody = B>,
@@ -992,6 +978,7 @@ where
     B: HttpBody + 'static,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<S::Future, B>,
+    M: Timer,
 {
     type Output = crate::Result<proto::Dispatched>;
 
@@ -1020,14 +1007,15 @@ mod upgrades {
     // `impl Future`, without requiring Rust 1.26.
     #[must_use = "futures do nothing unless polled"]
     #[allow(missing_debug_implementations)]
-    pub struct UpgradeableConnection<T, S, E>
+    pub struct UpgradeableConnection<T, S, M, E>
     where
         S: HttpService<Body>,
+        M: Timer,
     {
-        pub(super) inner: Connection<T, S, E>,
+        pub(super) inner: Connection<T, S, M, E>,
     }
 
-    impl<I, B, S, E> UpgradeableConnection<I, S, E>
+    impl<I, B, S, M, E> UpgradeableConnection<I, S, M, E>
     where
         S: HttpService<Body, ResBody = B>,
         S::Error: Into<Box<dyn StdError + Send + Sync>>,
@@ -1035,6 +1023,7 @@ mod upgrades {
         B: HttpBody + 'static,
         B::Error: Into<Box<dyn StdError + Send + Sync>>,
         E: ConnStreamExec<S::Future, B>,
+        M: Timer,
     {
         /// Start a graceful shutdown process for this connection.
         ///
@@ -1045,7 +1034,7 @@ mod upgrades {
         }
     }
 
-    impl<I, B, S, E> Future for UpgradeableConnection<I, S, E>
+    impl<I, B, S, M, E> Future for UpgradeableConnection<I, S, M, E>
     where
         S: HttpService<Body, ResBody = B>,
         S::Error: Into<Box<dyn StdError + Send + Sync>>,
@@ -1053,6 +1042,7 @@ mod upgrades {
         B: HttpBody + 'static,
         B::Error: Into<Box<dyn StdError + Send + Sync>>,
         E: ConnStreamExec<S::Future, B>,
+        M: Timer
     {
         type Output = crate::Result<()>;
 

@@ -15,7 +15,6 @@ use pin_project_lite::pin_project;
 use tokio::net::{TcpSocket, TcpStream};
 use tracing::{debug, trace, warn};
 
-use crate::common::tim::Tim;
 use crate::rt::{Sleep, Timer};
 
 use super::dns::{self, resolve, GaiResolver, Resolve};
@@ -125,7 +124,6 @@ impl<R> HttpConnector<R> {
                 recv_buffer_size: None,
             }),
             resolver,
-            timer: Tim::Default,
         }
     }
 
@@ -349,7 +347,7 @@ where
             dns::SocketAddrs::new(addrs)
         };
 
-        let c = ConnectingTcp::new(addrs, config, self.timer.clone());
+        let c = ConnectingTcp::new(addrs, config);
 
         let sock = c.connect().await?;
 
@@ -478,22 +476,24 @@ impl StdError for ConnectError {
     }
 }
 
-struct ConnectingTcp<'a, M: Timer> {
+struct ConnectingTcp<'a, M> {
     preferred: ConnectingTcpRemote,
     fallback: Option<ConnectingTcpFallback>,
     config: &'a Config,
+    marker: PhantomData<M>,
 }
 
-impl<'a, M> ConnectingTcp<'a, M> {
+impl<'a, M: Timer> ConnectingTcp<'a, M> {
     fn new(remote_addrs: dns::SocketAddrs, config: &'a Config) -> Self {
         if let Some(fallback_timeout) = config.happy_eyeballs_timeout {
             let (preferred_addrs, fallback_addrs) = remote_addrs
                 .split_by_preference(config.local_address_ipv4, config.local_address_ipv6);
             if fallback_addrs.is_empty() {
-                return ConnectingTcp {
+                return ConnectingTcp::<M> {
                     preferred: ConnectingTcpRemote::new(preferred_addrs, config.connect_timeout),
                     fallback: None,
                     config,
+                    marker: PhantomData,
                 };
             }
 
@@ -506,12 +506,14 @@ impl<'a, M> ConnectingTcp<'a, M> {
                     remote: ConnectingTcpRemote::new(fallback_addrs, config.connect_timeout),
                 }),
                 config,
+                marker: PhantomData,
             }
         } else {
             ConnectingTcp {
                 preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout),
                 fallback: None,
                 config,
+                marker: PhantomData,
             }
         }
     }
@@ -525,17 +527,15 @@ struct ConnectingTcpFallback {
 struct ConnectingTcpRemote {
     addrs: dns::SocketAddrs,
     connect_timeout: Option<Duration>,
-    timer: Tim,
 }
 
 impl ConnectingTcpRemote {
-    fn new(addrs: dns::SocketAddrs, connect_timeout: Option<Duration>, timer: Tim) -> Self {
+    fn new(addrs: dns::SocketAddrs, connect_timeout: Option<Duration>) -> Self {
         let connect_timeout = connect_timeout.map(|t| t / (addrs.len() as u32));
 
         Self {
             addrs,
             connect_timeout,
-            timer,
         }
     }
 }
@@ -955,8 +955,7 @@ mod tests {
                         send_buffer_size: None,
                         recv_buffer_size: None,
                     };
-                    let connecting_tcp =
-                        ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg, Tim::Default);
+                    let connecting_tcp = ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg);
                     let start = Instant::now();
                     Ok::<_, ConnectError>((start, ConnectingTcp::connect(connecting_tcp).await?))
                 })

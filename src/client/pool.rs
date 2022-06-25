@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::error::Error as StdError;
 use std::fmt;
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, Weak};
 
@@ -10,7 +11,6 @@ use futures_channel::oneshot;
 use tracing::{debug, trace};
 
 use super::client::Ver;
-use crate::common::tim::Tim;
 use crate::common::{exec::Exec, task, Future, Pin, Poll, Unpin};
 use crate::rt::Interval;
 use crate::rt::Timer;
@@ -57,7 +57,7 @@ pub(super) enum Reservation<T> {
 /// Simple type alias in case the key type needs to be adjusted.
 pub(super) type Key = (http::uri::Scheme, http::uri::Authority); //Arc<String>;
 
-struct PoolInner<T, M: Timer> {
+struct PoolInner<T, M> {
     // A flag that a connection is being established, and the connection
     // should be shared. This prevents making multiple HTTP/2 connections
     // to the same host.
@@ -82,8 +82,8 @@ struct PoolInner<T, M: Timer> {
     idle_interval_ref: Option<oneshot::Sender<crate::common::Never>>,
     #[cfg(feature = "runtime")]
     exec: Exec,
-    timer: Tim,
     timeout: Option<Duration>,
+    _marker: PhantomData<M>,
 }
 
 // This is because `Weak::new()` *allocates* space for `T`, even if it
@@ -103,7 +103,7 @@ impl Config {
 }
 
 impl<T, M> Pool<T, M> {
-    pub(super) fn new(config: Config, __exec: &Exec, timer: &Tim) -> Pool<T, M> {
+    pub(super) fn new(config: Config, __exec: &Exec) -> Pool<T, M> {
         let inner = if config.is_enabled() {
             Some(Arc::new(Mutex::new(PoolInner {
                 connecting: HashSet::new(),
@@ -114,8 +114,8 @@ impl<T, M> Pool<T, M> {
                 waiters: HashMap::new(),
                 #[cfg(feature = "runtime")]
                 exec: __exec.clone(),
-                timer: timer.clone(),
                 timeout: config.idle_timeout,
+                _marker: PhantomData,
             })))
         } else {
             None
@@ -141,7 +141,7 @@ impl<T, M> Pool<T, M> {
     }
 }
 
-impl<T: Poolable, M> Pool<T, M> {
+impl<T: Poolable, M: Timer> Pool<T, M> {
     /// Returns a `Checkout` which is a future that resolves if an idle
     /// connection becomes available.
     pub(super) fn checkout(&self, key: Key) -> Checkout<T, M> {
@@ -446,7 +446,7 @@ impl<T, M> PoolInner<T, M> {
 }
 
 #[cfg(feature = "runtime")]
-impl<T: Poolable, M> PoolInner<T, M> {
+impl<T: Poolable, M: Timer> PoolInner<T, M> {
     /// This should *only* be called by the IdleTask
     fn clear_expired(&mut self) {
         let dur = self.timeout.expect("interval assumes timeout");
@@ -487,14 +487,14 @@ impl<T, M> Clone for Pool<T, M> {
 
 /// A wrapped poolable value that tries to reinsert to the Pool on Drop.
 // Note: The bounds `T: Poolable` is needed for the Drop impl.
-pub(super) struct Pooled<T: Poolable, M> {
+pub(super) struct Pooled<T: Poolable, M: Timer> {
     value: Option<T>,
     is_reused: bool,
     key: Key,
     pool: WeakOpt<Mutex<PoolInner<T, M>>>,
 }
 
-impl<T: Poolable, M> Pooled<T, M> {
+impl<T: Poolable, M: Timer> Pooled<T, M> {
     pub(super) fn is_reused(&self) -> bool {
         self.is_reused
     }
@@ -512,20 +512,20 @@ impl<T: Poolable, M> Pooled<T, M> {
     }
 }
 
-impl<T: Poolable, M> Deref for Pooled<T, M> {
+impl<T: Poolable, M: Timer> Deref for Pooled<T, M> {
     type Target = T;
     fn deref(&self) -> &T {
         self.as_ref()
     }
 }
 
-impl<T: Poolable, M> DerefMut for Pooled<T, M> {
+impl<T: Poolable, M: Timer> DerefMut for Pooled<T, M> {
     fn deref_mut(&mut self) -> &mut T {
         self.as_mut()
     }
 }
 
-impl<T: Poolable, M> Drop for Pooled<T, M> {
+impl<T: Poolable, M: Timer> Drop for Pooled<T, M> {
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
             if !value.is_open() {
@@ -547,7 +547,7 @@ impl<T: Poolable, M> Drop for Pooled<T, M> {
     }
 }
 
-impl<T: Poolable, M> fmt::Debug for Pooled<T, M> {
+impl<T: Poolable, M: Timer> fmt::Debug for Pooled<T, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Pooled").field("key", &self.key).finish()
     }
@@ -577,7 +577,7 @@ impl fmt::Display for CheckoutIsClosedError {
     }
 }
 
-impl<T: Poolable, M> Checkout<T, M> {
+impl<T: Poolable, M: Timer> Checkout<T, M> {
     fn poll_waiter(
         &mut self,
         cx: &mut task::Context<'_>,
@@ -656,7 +656,7 @@ impl<T: Poolable, M> Checkout<T, M> {
     }
 }
 
-impl<T: Poolable, M> Future for Checkout<T, M> {
+impl<T: Poolable, M: Timer> Future for Checkout<T, M> {
     type Output = crate::Result<Pooled<T, M>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
@@ -689,12 +689,12 @@ impl<T, M> Drop for Checkout<T, M> {
 
 // FIXME: allow() required due to `impl Trait` leaking types to this lint
 #[allow(missing_debug_implementations)]
-pub(super) struct Connecting<T: Poolable, M> {
+pub(super) struct Connecting<T: Poolable, M: Timer> {
     key: Key,
     pool: WeakOpt<Mutex<PoolInner<T, M>>>,
 }
 
-impl<T: Poolable, M> Connecting<T, M> {
+impl<T: Poolable, M: Timer> Connecting<T, M> {
     pub(super) fn alpn_h2(self, pool: &Pool<T, M>) -> Option<Self> {
         debug_assert!(
             self.pool.0.is_none(),
@@ -705,7 +705,7 @@ impl<T: Poolable, M> Connecting<T, M> {
     }
 }
 
-impl<T: Poolable, M> Drop for Connecting<T, M> {
+impl<T: Poolable, M: Timer> Drop for Connecting<T, M> {
     fn drop(&mut self) {
         if let Some(pool) = self.pool.upgrade() {
             // No need to panic on drop, that could abort!
@@ -747,7 +747,7 @@ pin_project_lite::pin_project! {
 }
 
 #[cfg(feature = "runtime")]
-impl<T: Poolable + 'static, M> Future for IdleTask<T, M> {
+impl<T: Poolable + 'static, M: Timer> Future for IdleTask<T, M> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
@@ -839,7 +839,6 @@ mod tests {
                 max_idle_per_host: max_idle,
             },
             &Exec::Default,
-            &Tim::Default,
         );
         pool.no_timer();
         pool
@@ -941,7 +940,6 @@ mod tests {
                 max_idle_per_host: std::usize::MAX,
             },
             &Exec::Default,
-            &Tim::Default,
         );
 
         let key = host_key("foo");

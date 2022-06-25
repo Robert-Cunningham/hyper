@@ -30,7 +30,8 @@ use crate::rt::Timer;
 /// `Client` is cheap to clone and cloning is the recommended way to share a `Client`. The
 /// underlying connection pool will be reused.
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-pub struct Client<C, M, B = Body> {
+// TODO Add B = Body
+pub struct Client<C, M, B> {
     config: Config,
     conn_builder: conn::Builder,
     connector: C,
@@ -55,7 +56,7 @@ pub struct ResponseFuture {
 // ===== impl Client =====
 
 #[cfg(feature = "tcp")]
-impl Client<HttpConnector, Body> {
+impl<M> Client<HttpConnector, M, Body> {
     /// Create a new Client with the default [config](Builder).
     ///
     /// # Note
@@ -65,19 +66,19 @@ impl Client<HttpConnector, Body> {
     /// TLS](https://hyper.rs/guides/client/configuration).
     #[cfg_attr(docsrs, doc(cfg(feature = "tcp")))]
     #[inline]
-    pub fn new() -> Client<HttpConnector, Body> {
+    pub fn new() -> Client<HttpConnector, M, Body> {
         Builder::default().build_http()
     }
 }
 
 #[cfg(feature = "tcp")]
-impl Default for Client<HttpConnector, Body> {
-    fn default() -> Client<HttpConnector, Body> {
+impl<M> Default for Client<HttpConnector, M, Body> {
+    fn default() -> Client<HttpConnector, M, Body> {
         Client::new()
     }
 }
 
-impl Client<(), Body> {
+impl<M> Client<(), M, Body> {
     /// Create a builder to configure a new `Client`.
     ///
     /// # Example
@@ -103,12 +104,13 @@ impl Client<(), Body> {
     }
 }
 
-impl<C, B> Client<C, B>
+impl<C, M, B> Client<C, M, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+    M: Timer + Send + Sync + 'static,
 {
     /// Send a `GET` request to the supplied `Uri`.
     ///
@@ -339,7 +341,7 @@ where
     async fn connection_for(
         &self,
         pool_key: PoolKey,
-    ) -> Result<Pooled<PoolClient<B>>, ClientConnectError> {
+    ) -> Result<Pooled<PoolClient<B>, M>, ClientConnectError> {
         // This actually races 2 different futures to try to get a ready
         // connection the fastest, and to reduce connection churn.
         //
@@ -426,7 +428,7 @@ where
     fn connect_to(
         &self,
         pool_key: PoolKey,
-    ) -> impl Lazy<Output = crate::Result<Pooled<PoolClient<B>>>> + Unpin {
+    ) -> impl Lazy<Output = crate::Result<Pooled<PoolClient<B>, M>>> + Unpin {
         let executor = self.conn_builder.exec.clone();
         let pool = self.pool.clone();
         #[cfg(not(feature = "http2"))]
@@ -525,12 +527,13 @@ where
     }
 }
 
-impl<C, B> tower_service::Service<Request<B>> for Client<C, B>
+impl<C, M, B> tower_service::Service<Request<B>> for Client<C, M, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+    M: Timer + Send + Sync + 'static,
 {
     type Response = Response<Body>;
     type Error = crate::Error;
@@ -545,12 +548,13 @@ where
     }
 }
 
-impl<C, B> tower_service::Service<Request<B>> for &'_ Client<C, B>
+impl<C, M, B> tower_service::Service<Request<B>> for &'_ Client<C, M, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+    M: Timer + Send + Sync + 'static,
 {
     type Response = Response<Body>;
     type Error = crate::Error;
@@ -565,8 +569,8 @@ where
     }
 }
 
-impl<C: Clone, B> Clone for Client<C, B> {
-    fn clone(&self) -> Client<C, B> {
+impl<C: Clone, M, B> Clone for Client<C, M, B> {
+    fn clone(&self) -> Client<C, M, B> {
         Client {
             config: self.config.clone(),
             conn_builder: self.conn_builder.clone(),
@@ -576,7 +580,7 @@ impl<C: Clone, B> Clone for Client<C, B> {
     }
 }
 
-impl<C, B> fmt::Debug for Client<C, B> {
+impl<C, M, B> fmt::Debug for Client<C, M, B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Client").finish()
     }
@@ -1331,7 +1335,7 @@ impl Builder {
 
     /// Builder a client with this configuration and the default `HttpConnector`.
     #[cfg(feature = "tcp")]
-    pub fn build_http<B>(&self) -> Client<HttpConnector, B>
+    pub fn build_http<M, B>(&self) -> Client<HttpConnector, M, B>
     where
         B: HttpBody + Send,
         B::Data: Send,
@@ -1344,7 +1348,7 @@ impl Builder {
     }
 
     /// Combine the configuration of this builder with a connector to create a `Client`.
-    pub fn build<C, B>(&self, connector: C) -> Client<C, B>
+    pub fn build<C, M, B>(&self, connector: C) -> Client<C, M, B>
     where
         C: Connect + Clone,
         B: HttpBody + Send,
@@ -1354,11 +1358,7 @@ impl Builder {
             config: self.client_config,
             conn_builder: self.conn_builder.clone(),
             connector,
-            pool: Pool::new(
-                self.pool_config,
-                &self.conn_builder.exec,
-                &self.conn_builder.timer,
-            ),
+            pool: Pool::new(self.pool_config, &self.conn_builder.exec),
         }
     }
 }

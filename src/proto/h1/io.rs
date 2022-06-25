@@ -17,6 +17,7 @@ use tracing::{debug, trace};
 use super::{Http1Transaction, ParseContext, ParsedMessage};
 use crate::common::buf::BufList;
 use crate::common::{task, Pin, Poll};
+use crate::rt::Timer;
 
 /// The initial buffer size allocated before trying to read from IO.
 pub(crate) const INIT_BUFFER_SIZE: usize = 8192;
@@ -172,23 +173,22 @@ where
         }
     }
 
-    pub(super) fn parse<S>(
+    pub(super) fn parse<S, M>(
         &mut self,
         cx: &mut task::Context<'_>,
         parse_ctx: ParseContext<'_>,
     ) -> Poll<crate::Result<ParsedMessage<S::Incoming>>>
     where
         S: Http1Transaction,
+        M: Timer,
     {
         loop {
-            match super::role::parse_headers::<S>(
+            match super::role::parse_headers::<S, M>(
                 &mut self.read_buf,
                 ParseContext {
                     cached_headers: parse_ctx.cached_headers,
                     req_method: parse_ctx.req_method,
                     h1_parser_config: parse_ctx.h1_parser_config.clone(),
-                    #[cfg(all(feature = "server", feature = "runtime"))]
-                    timer: parse_ctx.timer.clone(),
                     #[cfg(all(feature = "server", feature = "runtime"))]
                     h1_header_read_timeout: parse_ctx.h1_header_read_timeout,
                     #[cfg(all(feature = "server", feature = "runtime"))]
@@ -738,7 +738,6 @@ mod tests {
             let parse_ctx = ParseContext {
                 cached_headers: &mut None,
                 req_method: &mut None,
-                timer: Tim::Default,
                 h1_parser_config: Default::default(),
                 #[cfg(feature = "runtime")]
                 h1_header_read_timeout: None,
@@ -756,7 +755,7 @@ mod tests {
                 raw_headers: false,
             };
             assert!(buffered
-                .parse::<ClientTransaction>(cx, parse_ctx)
+                .parse::<ClientTransaction, TokioTimer>(cx, parse_ctx)
                 .is_pending());
             Poll::Ready(())
         })
