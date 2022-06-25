@@ -15,7 +15,7 @@ use super::accept::Accept;
 
 /// A stream of connections from binding to an address.
 #[must_use = "streams do nothing unless polled"]
-pub struct AddrIncoming {
+pub struct AddrIncoming<M> {
     addr: SocketAddr,
     listener: TcpListener,
     sleep_on_errors: bool,
@@ -25,7 +25,7 @@ pub struct AddrIncoming {
     timer: Tim,
 }
 
-impl AddrIncoming {
+impl<M: Timer> AddrIncoming<M> {
     pub(super) fn new(addr: &SocketAddr) -> crate::Result<Self> {
         let std_listener = StdTcpListener::bind(addr).map_err(crate::Error::new_listen)?;
 
@@ -134,7 +134,7 @@ impl AddrIncoming {
                         error!("accept error: {}", e);
 
                         // Sleep 1s.
-                        let mut timeout = Box::into_pin(self.timer.sleep(Duration::from_secs(1)));
+                        let mut timeout = Box::into_pin(M::sleep(Duration::from_secs(1)));
 
                         match timeout.as_mut().poll(cx) {
                             Poll::Ready(()) => {
@@ -155,7 +155,7 @@ impl AddrIncoming {
     }
 }
 
-impl Accept for AddrIncoming {
+impl<M> Accept for AddrIncoming<M> {
     type Conn = TcpStream;
     type Error = io::Error;
 
@@ -184,7 +184,7 @@ fn is_connection_error(e: &io::Error) -> bool {
     )
 }
 
-impl fmt::Debug for AddrIncoming {
+impl<M> fmt::Debug for AddrIncoming<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AddrIncoming")
             .field("addr", &self.addr)

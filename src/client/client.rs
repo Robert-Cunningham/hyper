@@ -30,11 +30,11 @@ use crate::rt::Timer;
 /// `Client` is cheap to clone and cloning is the recommended way to share a `Client`. The
 /// underlying connection pool will be reused.
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-pub struct Client<C, B = Body> {
+pub struct Client<C, M, B = Body> {
     config: Config,
     conn_builder: conn::Builder,
     connector: C,
-    pool: Pool<PoolClient<B>>,
+    pool: Pool<PoolClient<B>, M>,
 }
 
 #[derive(Clone, Copy, Debug)]

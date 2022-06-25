@@ -13,12 +13,13 @@ use super::client::Ver;
 use crate::common::tim::Tim;
 use crate::common::{exec::Exec, task, Future, Pin, Poll, Unpin};
 use crate::rt::Interval;
+use crate::rt::Timer;
 
 // FIXME: allow() required due to `impl Trait` leaking types to this lint
 #[allow(missing_debug_implementations)]
-pub(super) struct Pool<T> {
+pub(super) struct Pool<T, M> {
     // If the pool is disabled, this is None.
-    inner: Option<Arc<Mutex<PoolInner<T>>>>,
+    inner: Option<Arc<Mutex<PoolInner<T, M>>>>,
 }
 
 // Before using a pooled connection, make sure the sender is not dead.
@@ -56,7 +57,7 @@ pub(super) enum Reservation<T> {
 /// Simple type alias in case the key type needs to be adjusted.
 pub(super) type Key = (http::uri::Scheme, http::uri::Authority); //Arc<String>;
 
-struct PoolInner<T> {
+struct PoolInner<T, M: Timer> {
     // A flag that a connection is being established, and the connection
     // should be shared. This prevents making multiple HTTP/2 connections
     // to the same host.
@@ -101,8 +102,8 @@ impl Config {
     }
 }
 
-impl<T> Pool<T> {
-    pub(super) fn new(config: Config, __exec: &Exec, timer: &Tim) -> Pool<T> {
+impl<T, M> Pool<T, M> {
+    pub(super) fn new(config: Config, __exec: &Exec, timer: &Tim) -> Pool<T, M> {
         let inner = if config.is_enabled() {
             Some(Arc::new(Mutex::new(PoolInner {
                 connecting: HashSet::new(),
@@ -140,10 +141,10 @@ impl<T> Pool<T> {
     }
 }
 
-impl<T: Poolable> Pool<T> {
+impl<T: Poolable, M> Pool<T, M> {
     /// Returns a `Checkout` which is a future that resolves if an idle
     /// connection becomes available.
-    pub(super) fn checkout(&self, key: Key) -> Checkout<T> {
+    pub(super) fn checkout(&self, key: Key) -> Checkout<T, M> {
         Checkout {
             key,
             pool: self.clone(),
@@ -153,7 +154,7 @@ impl<T: Poolable> Pool<T> {
 
     /// Ensure that there is only ever 1 connecting task for HTTP/2
     /// connections. This does nothing for HTTP/1.
-    pub(super) fn connecting(&self, key: &Key, ver: Ver) -> Option<Connecting<T>> {
+    pub(super) fn connecting(&self, key: &Key, ver: Ver) -> Option<Connecting<T, M>> {
         if ver == Ver::Http2 {
             if let Some(ref enabled) = self.inner {
                 let mut inner = enabled.lock().unwrap();
@@ -205,9 +206,9 @@ impl<T: Poolable> Pool<T> {
 
     pub(super) fn pooled(
         &self,
-        #[cfg_attr(not(feature = "http2"), allow(unused_mut))] mut connecting: Connecting<T>,
+        #[cfg_attr(not(feature = "http2"), allow(unused_mut))] mut connecting: Connecting<T, M>,
         value: T,
-    ) -> Pooled<T> {
+    ) -> Pooled<T, M> {
         let (value, pool_ref) = if let Some(ref enabled) = self.inner {
             match value.reserve() {
                 #[cfg(feature = "http2")]
@@ -247,7 +248,7 @@ impl<T: Poolable> Pool<T> {
         }
     }
 
-    fn reuse(&self, key: &Key, value: T) -> Pooled<T> {
+    fn reuse(&self, key: &Key, value: T) -> Pooled<T, M> {
         debug!("reuse idle connection for {:?}", key);
         // TODO: unhack this
         // In Pool::pooled(), which is used for inserting brand new connections,
@@ -321,8 +322,8 @@ impl<'a, T: Poolable + 'a> IdlePopper<'a, T> {
     }
 }
 
-impl<T: Poolable> PoolInner<T> {
-    fn put(&mut self, key: Key, value: T, __pool_ref: &Arc<Mutex<PoolInner<T>>>) {
+impl<T: Poolable, M: Timer> PoolInner<T, M> {
+    fn put(&mut self, key: Key, value: T, __pool_ref: &Arc<Mutex<PoolInner<T, M>>>) {
         if value.can_share() && self.idle.contains_key(&key) {
             trace!("put; existing idle HTTP/2 connection for {:?}", key);
             return;
@@ -402,9 +403,7 @@ impl<T: Poolable> PoolInner<T> {
     }
 
     #[cfg(feature = "runtime")]
-    fn spawn_idle_interval(&mut self, pool_ref: &Arc<Mutex<PoolInner<T>>>) {
-        use crate::rt::Timer;
-
+    fn spawn_idle_interval(&mut self, pool_ref: &Arc<Mutex<PoolInner<T, M>>>) {
         let (dur, rx) = {
             if self.idle_interval_ref.is_some() {
                 return;
@@ -420,7 +419,7 @@ impl<T: Poolable> PoolInner<T> {
         };
 
         let interval = IdleTask {
-            interval: self.timer.interval(dur),
+            interval: M::interval(dur),
             pool: WeakOpt::downgrade(pool_ref),
             pool_drop_notifier: rx,
         };
@@ -429,7 +428,7 @@ impl<T: Poolable> PoolInner<T> {
     }
 }
 
-impl<T> PoolInner<T> {
+impl<T, M> PoolInner<T, M> {
     /// Any `FutureResponse`s that were created will have made a `Checkout`,
     /// and possibly inserted into the pool that it is waiting for an idle
     /// connection. If a user ever dropped that future, we need to clean out
@@ -447,7 +446,7 @@ impl<T> PoolInner<T> {
 }
 
 #[cfg(feature = "runtime")]
-impl<T: Poolable> PoolInner<T> {
+impl<T: Poolable, M> PoolInner<T, M> {
     /// This should *only* be called by the IdleTask
     fn clear_expired(&mut self) {
         let dur = self.timeout.expect("interval assumes timeout");
@@ -478,8 +477,8 @@ impl<T: Poolable> PoolInner<T> {
     }
 }
 
-impl<T> Clone for Pool<T> {
-    fn clone(&self) -> Pool<T> {
+impl<T, M> Clone for Pool<T, M> {
+    fn clone(&self) -> Pool<T, M> {
         Pool {
             inner: self.inner.clone(),
         }
@@ -488,14 +487,14 @@ impl<T> Clone for Pool<T> {
 
 /// A wrapped poolable value that tries to reinsert to the Pool on Drop.
 // Note: The bounds `T: Poolable` is needed for the Drop impl.
-pub(super) struct Pooled<T: Poolable> {
+pub(super) struct Pooled<T: Poolable, M> {
     value: Option<T>,
     is_reused: bool,
     key: Key,
-    pool: WeakOpt<Mutex<PoolInner<T>>>,
+    pool: WeakOpt<Mutex<PoolInner<T, M>>>,
 }
 
-impl<T: Poolable> Pooled<T> {
+impl<T: Poolable, M> Pooled<T, M> {
     pub(super) fn is_reused(&self) -> bool {
         self.is_reused
     }
@@ -513,20 +512,20 @@ impl<T: Poolable> Pooled<T> {
     }
 }
 
-impl<T: Poolable> Deref for Pooled<T> {
+impl<T: Poolable, M> Deref for Pooled<T, M> {
     type Target = T;
     fn deref(&self) -> &T {
         self.as_ref()
     }
 }
 
-impl<T: Poolable> DerefMut for Pooled<T> {
+impl<T: Poolable, M> DerefMut for Pooled<T, M> {
     fn deref_mut(&mut self) -> &mut T {
         self.as_mut()
     }
 }
 
-impl<T: Poolable> Drop for Pooled<T> {
+impl<T: Poolable, M> Drop for Pooled<T, M> {
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
             if !value.is_open() {
@@ -548,7 +547,7 @@ impl<T: Poolable> Drop for Pooled<T> {
     }
 }
 
-impl<T: Poolable> fmt::Debug for Pooled<T> {
+impl<T: Poolable, M> fmt::Debug for Pooled<T, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Pooled").field("key", &self.key).finish()
     }
@@ -561,9 +560,9 @@ struct Idle<T> {
 
 // FIXME: allow() required due to `impl Trait` leaking types to this lint
 #[allow(missing_debug_implementations)]
-pub(super) struct Checkout<T> {
+pub(super) struct Checkout<T, M> {
     key: Key,
-    pool: Pool<T>,
+    pool: Pool<T, M>,
     waiter: Option<oneshot::Receiver<T>>,
 }
 
@@ -578,11 +577,11 @@ impl fmt::Display for CheckoutIsClosedError {
     }
 }
 
-impl<T: Poolable> Checkout<T> {
+impl<T: Poolable, M> Checkout<T, M> {
     fn poll_waiter(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Option<crate::Result<Pooled<T>>>> {
+    ) -> Poll<Option<crate::Result<Pooled<T, M>>>> {
         if let Some(mut rx) = self.waiter.take() {
             match Pin::new(&mut rx).poll(cx) {
                 Poll::Ready(Ok(value)) => {
@@ -607,7 +606,7 @@ impl<T: Poolable> Checkout<T> {
         }
     }
 
-    fn checkout(&mut self, cx: &mut task::Context<'_>) -> Option<Pooled<T>> {
+    fn checkout(&mut self, cx: &mut task::Context<'_>) -> Option<Pooled<T, M>> {
         let entry = {
             let mut inner = self.pool.inner.as_ref()?.lock().unwrap();
             let expiration = Expiration::new(inner.timeout);
@@ -657,8 +656,8 @@ impl<T: Poolable> Checkout<T> {
     }
 }
 
-impl<T: Poolable> Future for Checkout<T> {
-    type Output = crate::Result<Pooled<T>>;
+impl<T: Poolable, M> Future for Checkout<T, M> {
+    type Output = crate::Result<Pooled<T, M>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         if let Some(pooled) = ready!(self.poll_waiter(cx)?) {
@@ -677,7 +676,7 @@ impl<T: Poolable> Future for Checkout<T> {
     }
 }
 
-impl<T> Drop for Checkout<T> {
+impl<T, M> Drop for Checkout<T, M> {
     fn drop(&mut self) {
         if self.waiter.take().is_some() {
             trace!("checkout dropped for {:?}", self.key);
@@ -690,13 +689,13 @@ impl<T> Drop for Checkout<T> {
 
 // FIXME: allow() required due to `impl Trait` leaking types to this lint
 #[allow(missing_debug_implementations)]
-pub(super) struct Connecting<T: Poolable> {
+pub(super) struct Connecting<T: Poolable, M> {
     key: Key,
-    pool: WeakOpt<Mutex<PoolInner<T>>>,
+    pool: WeakOpt<Mutex<PoolInner<T, M>>>,
 }
 
-impl<T: Poolable> Connecting<T> {
-    pub(super) fn alpn_h2(self, pool: &Pool<T>) -> Option<Self> {
+impl<T: Poolable, M> Connecting<T, M> {
+    pub(super) fn alpn_h2(self, pool: &Pool<T, M>) -> Option<Self> {
         debug_assert!(
             self.pool.0.is_none(),
             "Connecting::alpn_h2 but already Http2"
@@ -706,7 +705,7 @@ impl<T: Poolable> Connecting<T> {
     }
 }
 
-impl<T: Poolable> Drop for Connecting<T> {
+impl<T: Poolable, M> Drop for Connecting<T, M> {
     fn drop(&mut self) {
         if let Some(pool) = self.pool.upgrade() {
             // No need to panic on drop, that could abort!
@@ -735,10 +734,10 @@ impl Expiration {
 
 #[cfg(feature = "runtime")]
 pin_project_lite::pin_project! {
-    struct IdleTask<T> {
+    struct IdleTask<T, M> {
         #[pin]
         interval: Box<dyn Interval>,
-        pool: WeakOpt<Mutex<PoolInner<T>>>,
+        pool: WeakOpt<Mutex<PoolInner<T, M>>>,
         // This allows the IdleTask to be notified as soon as the entire
         // Pool is fully dropped, and shutdown. This channel is never sent on,
         // but Err(Canceled) will be received when the Pool is dropped.
@@ -748,7 +747,7 @@ pin_project_lite::pin_project! {
 }
 
 #[cfg(feature = "runtime")]
-impl<T: Poolable + 'static> Future for IdleTask<T> {
+impl<T: Poolable + 'static, M> Future for IdleTask<T, M> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
@@ -885,7 +884,7 @@ mod tests {
         let pooled = pool.pooled(c(key.clone()), Uniq(41));
 
         drop(pooled);
-        Tim::Default.sleep(pool.locked().timeout.unwrap()).await;
+        TokioTimer::sleep(pool.locked().timeout.unwrap()).await;
         let mut checkout = pool.checkout(key);
         let poll_once = PollOnce(&mut checkout);
         let is_not_ready = poll_once.await.is_none();
@@ -906,7 +905,7 @@ mod tests {
             pool.locked().idle.get(&key).map(|entries| entries.len()),
             Some(3)
         );
-        Tim::Default.sleep(pool.locked().timeout.unwrap()).await;
+        TokioTimer::sleep(pool.locked().timeout.unwrap()).await;
 
         let mut checkout = pool.checkout(key.clone());
         let poll_once = PollOnce(&mut checkout);
@@ -958,7 +957,7 @@ mod tests {
 
         // Actually sleep instead of tokio::time::pause() / tokio::time::advance() because
         // the Durations we use internally may not be tokio::time::Duration.
-        Tim::Default.sleep(Duration::from_millis(30)).await;
+        TokioTimer::sleep(Duration::from_millis(30)).await;
         // Yield so the Interval can reap...
         tokio::task::yield_now().await;
 

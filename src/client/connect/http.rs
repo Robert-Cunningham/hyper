@@ -479,13 +479,13 @@ impl StdError for ConnectError {
     }
 }
 
-struct ConnectingTcp<'a> {
+struct ConnectingTcp<'a, M: Timer> {
     preferred: ConnectingTcpRemote,
     fallback: Option<ConnectingTcpFallback>,
     config: &'a Config,
 }
 
-impl<'a> ConnectingTcp<'a> {
+impl<'a, M> ConnectingTcp<'a, M> {
     fn new(remote_addrs: dns::SocketAddrs, config: &'a Config, timer: Tim) -> Self {
         if let Some(fallback_timeout) = config.happy_eyeballs_timeout {
             let (preferred_addrs, fallback_addrs) = remote_addrs
@@ -511,7 +511,7 @@ impl<'a> ConnectingTcp<'a> {
                     timer.clone(),
                 ),
                 fallback: Some(ConnectingTcpFallback {
-                    delay: timer.clone().sleep(fallback_timeout),
+                    delay: M::sleep(fallback_timeout),
                     remote: ConnectingTcpRemote::new(
                         fallback_addrs,
                         config.connect_timeout,
@@ -608,7 +608,7 @@ fn bind_local_address(
     Ok(())
 }
 
-fn connect(
+fn connect<M: Timer>(
     addr: &SocketAddr,
     config: &Config,
     connect_timeout: Option<Duration>,
@@ -684,7 +684,7 @@ fn connect(
     let connect = socket.connect(*addr);
     Ok(async move {
         match connect_timeout {
-            Some(dur) => match tokio::time::timeout(dur, connect).await {
+            Some(dur) => match M::timeout(dur, connect).await {
                 Ok(Ok(s)) => Ok(s),
                 Ok(Err(e)) => Err(e),
                 Err(e) => Err(io::Error::new(io::ErrorKind::TimedOut, e)),
@@ -695,7 +695,7 @@ fn connect(
     })
 }
 
-impl ConnectingTcp<'_> {
+impl<M> ConnectingTcp<'_, M> {
     async fn connect(mut self) -> Result<TcpStream, ConnectError> {
         match self.fallback {
             None => self.preferred.connect(self.config).await,

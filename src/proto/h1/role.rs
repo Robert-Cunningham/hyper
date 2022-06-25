@@ -61,12 +61,13 @@ macro_rules! maybe_panic {
     })
 }
 
-pub(super) fn parse_headers<T>(
+pub(super) fn parse_headers<T, M>(
     bytes: &mut BytesMut,
     ctx: ParseContext<'_>,
 ) -> ParseResult<T::Incoming>
 where
     T: Http1Transaction,
+    M: Timer,
 {
     // If the buffer is empty, don't bother entering the span, it's just noise.
     if bytes.is_empty() {
@@ -88,10 +89,7 @@ where
                 }
                 None => {
                     debug!("setting h1 header read timeout timer");
-                    *ctx.h1_header_read_timeout_fut =
-                        Some(Box::into_pin(ctx.timer.sleep_until(deadline))) // TODO(robert): Add a `Tim` to every ParseContext
-
-                    //Some(Box::pin(tokio::time::sleep_until(deadline)));
+                    *ctx.h1_header_read_timeout_fut = Some(Box::into_pin(M::sleep_until(deadline)))
                 }
             }
         }
