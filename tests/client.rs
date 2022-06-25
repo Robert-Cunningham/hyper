@@ -1172,7 +1172,8 @@ mod dispatch_impl {
         rt.block_on(async move {
             let (res, ()) = future::join(res, rx).await;
             res.unwrap();
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            (TokioTimer {}).sleep(Duration::from_secs(1)).await;
+            //tokio::time::sleep(Duration::from_secs(1)).await;
         });
 
         rt.block_on(closes.into_future()).0.expect("closes");
