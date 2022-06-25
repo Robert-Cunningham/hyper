@@ -181,7 +181,7 @@ impl<T: Poolable, M: Timer> Pool<T, M> {
     }
 
     #[cfg(test)]
-    fn locked(&self) -> std::sync::MutexGuard<'_, PoolInner<T>> {
+    fn locked(&self) -> std::sync::MutexGuard<'_, PoolInner<T, M>> {
         self.inner.as_ref().expect("enabled").lock().expect("lock")
     }
 
@@ -817,7 +817,7 @@ mod tests {
         }
     }
 
-    fn c<T: Poolable>(key: Key) -> Connecting<T> {
+    fn c<T: Poolable, M>(key: Key) -> Connecting<T, M> {
         Connecting {
             key,
             pool: WeakOpt::none(),
@@ -828,11 +828,11 @@ mod tests {
         (http::uri::Scheme::HTTP, s.parse().expect("host key"))
     }
 
-    fn pool_no_timer<T>() -> Pool<T> {
+    fn pool_no_timer<T, M>() -> Pool<T, M> {
         pool_max_idle_no_timer(::std::usize::MAX)
     }
 
-    fn pool_max_idle_no_timer<T>(max_idle: usize) -> Pool<T> {
+    fn pool_max_idle_no_timer<T, M>(max_idle: usize) -> Pool<T, M> {
         let pool = Pool::new(
             super::Config {
                 idle_timeout: Some(Duration::from_millis(100)),

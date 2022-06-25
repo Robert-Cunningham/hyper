@@ -221,6 +221,7 @@ where
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<<S::Service as HttpService<Body>>::Future, B>,
     E: NewSvcExec<IO, S::Future, S::Service, M, E, NoopWatcher>,
+    M: Timer,
 {
     type Output = crate::Result<()>;
 
@@ -562,6 +563,7 @@ impl<I, M, E> Builder<I, M, E> {
         B::Error: Into<Box<dyn StdError + Send + Sync>>,
         E: NewSvcExec<I::Conn, S::Future, S::Service, M, E, NoopWatcher>,
         E: ConnStreamExec<<S::Service as HttpService<Body>>::Future, B>,
+        M: Timer,
     {
         Server {
             incoming: self.incoming,
@@ -622,7 +624,7 @@ impl<M, E> Builder<AddrIncoming<M>, E> {
 // The `Server::with_graceful_shutdown` needs to keep track of all active
 // connections, and signal that they start to shutdown when prompted, so
 // it has a `GracefulWatcher` implementation to do that.
-pub trait Watcher<I, S: HttpService<Body>, M, E>: Clone {
+pub trait Watcher<I, S: HttpService<Body>, M: Timer, E>: Clone {
     type Future: Future<Output = crate::Result<()>>;
 
     fn watch(&self, conn: UpgradeableConnection<I, S, M, E>) -> Self::Future;
@@ -676,7 +678,7 @@ pub(crate) mod new_svc {
 
     pin_project! {
         #[allow(missing_debug_implementations)]
-        pub struct NewSvcTask<I, N, S: HttpService<Body>, M, E, W: Watcher<I, S, M, E>> {
+        pub struct NewSvcTask<I, N, S: HttpService<Body>, M: Timer, E, W: Watcher<I, S, M, E>> {
             #[pin]
             state: State<I, N, S, M, E, W>, // Check generic ordering
         }
@@ -684,7 +686,7 @@ pub(crate) mod new_svc {
 
     pin_project! {
         #[project = StateProj]
-        pub(super) enum State<I, N, S: HttpService<Body>, M, E, W: Watcher<I, S, M, E>> {
+        pub(super) enum State<I, N, S: HttpService<Body>, M: Timer, E, W: Watcher<I, S, M, E>> {
             Connecting {
                 #[pin]
                 connecting: Connecting<I, N, E>,
@@ -697,7 +699,7 @@ pub(crate) mod new_svc {
         }
     }
 
-    impl<I, N, S: HttpService<Body>, M, E, W: Watcher<I, S, M, E>> NewSvcTask<I, N, S, M, E, W> {
+    impl<I, N, S: HttpService<Body>, M: Timer, E, W: Watcher<I, S, M, E>> NewSvcTask<I, N, S, M, E, W> {
         pub(super) fn new(connecting: Connecting<I, N, E>, watcher: W) -> Self {
             NewSvcTask {
                 state: State::Connecting {

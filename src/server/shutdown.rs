@@ -62,6 +62,7 @@ where
     F: Future<Output = ()>,
     E: ConnStreamExec<<S::Service as HttpService<Body>>::Future, B>,
     E: NewSvcExec<IO, S::Future, S::Service, M, E, GracefulWatcher>,
+    M: Timer
 {
     type Output = crate::Result<()>;
 
