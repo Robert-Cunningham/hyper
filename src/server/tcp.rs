@@ -2,6 +2,7 @@ use std::fmt;
 use std::io;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpListener as StdTcpListener};
+use std::ops::DerefMut;
 use std::time::Duration;
 
 use tokio::net::{TcpListener, TcpStream};
@@ -22,9 +23,11 @@ pub struct AddrIncoming<M> {
     sleep_on_errors: bool,
     tcp_keepalive_timeout: Option<Duration>,
     tcp_nodelay: bool,
-    timeout: Option<Pin<Box<dyn Sleep>>>,
-    _marker: PhantomData<M>, // TODO: is this a correct use of PhantomData??
+    timeout: Option<Pin<Box<dyn Sleep + Unpin>>>,
+    _marker: PhantomData<M>, 
 }
+
+impl<M> Unpin for AddrIncoming<M> {}
 
 impl<M> AddrIncoming<M> {
     pub(super) fn new(addr: &SocketAddr) -> crate::Result<Self> {

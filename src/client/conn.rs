@@ -554,7 +554,9 @@ where
 
 // ===== impl Builder
 
-impl<M> Builder<M> {
+impl<M> Builder<M> 
+    where M: Clone
+{
     /// Creates a new connection builder.
     #[inline]
     pub fn new() -> Builder<M> {
@@ -582,7 +584,7 @@ impl<M> Builder<M> {
     }
 
     /// Provide an executor to execute background HTTP2 tasks.
-    pub fn executor<E>(&mut self, exec: E) -> &mut Builder
+    pub fn executor<E>(&mut self, exec: E) -> &mut Builder<M>
     where
         E: Executor<BoxSendFuture> + Send + Sync + 'static,
     {
@@ -603,7 +605,7 @@ impl<M> Builder<M> {
     /// Set whether HTTP/0.9 responses should be tolerated.
     ///
     /// Default is false.
-    pub fn http09_responses(&mut self, enabled: bool) -> &mut Builder {
+    pub fn http09_responses(&mut self, enabled: bool) -> &mut Builder<M> {
         self.h09_responses = enabled;
         self
     }
@@ -630,7 +632,7 @@ impl<M> Builder<M> {
     pub fn http1_allow_spaces_after_header_name_in_responses(
         &mut self,
         enabled: bool,
-    ) -> &mut Builder {
+    ) -> &mut Builder<M> {
         self.h1_parser_config
             .allow_spaces_after_header_name_in_responses(enabled);
         self
@@ -673,7 +675,7 @@ impl<M> Builder<M> {
     pub fn http1_allow_obsolete_multiline_headers_in_responses(
         &mut self,
         enabled: bool,
-    ) -> &mut Builder {
+    ) -> &mut Builder<M> {
         self.h1_parser_config
             .allow_obsolete_multiline_headers_in_responses(enabled);
         self
@@ -691,7 +693,7 @@ impl<M> Builder<M> {
     ///
     /// Default is `auto`. In this mode hyper will try to guess which
     /// mode to use
-    pub fn http1_writev(&mut self, enabled: bool) -> &mut Builder {
+    pub fn http1_writev(&mut self, enabled: bool) -> &mut Builder<M> {
         self.h1_writev = Some(enabled);
         self
     }
@@ -702,7 +704,7 @@ impl<M> Builder<M> {
     /// Note that this setting does not affect HTTP/2.
     ///
     /// Default is false.
-    pub fn http1_title_case_headers(&mut self, enabled: bool) -> &mut Builder {
+    pub fn http1_title_case_headers(&mut self, enabled: bool) -> &mut Builder<M> {
         self.h1_title_case_headers = enabled;
         self
     }
@@ -720,7 +722,7 @@ impl<M> Builder<M> {
     /// Note that this setting does not affect HTTP/2.
     ///
     /// Default is false.
-    pub fn http1_preserve_header_case(&mut self, enabled: bool) -> &mut Builder {
+    pub fn http1_preserve_header_case(&mut self, enabled: bool) -> &mut Builder<M> {
         self.h1_preserve_header_case = enabled;
         self
     }
@@ -735,7 +737,7 @@ impl<M> Builder<M> {
     ///
     /// Default is false.
     #[cfg(feature = "ffi")]
-    pub fn http1_preserve_header_order(&mut self, enabled: bool) -> &mut Builder {
+    pub fn http1_preserve_header_order(&mut self, enabled: bool) -> &mut Builder<M> {
         self.h1_preserve_header_order = enabled;
         self
     }
@@ -745,7 +747,7 @@ impl<M> Builder<M> {
     /// Note that setting this option unsets the `http1_max_buf_size` option.
     ///
     /// Default is an adaptive read buffer.
-    pub fn http1_read_buf_exact_size(&mut self, sz: Option<usize>) -> &mut Builder {
+    pub fn http1_read_buf_exact_size(&mut self, sz: Option<usize>) -> &mut Builder<M> {
         self.h1_read_buf_exact_size = sz;
         self.h1_max_buf_size = None;
         self
@@ -784,7 +786,7 @@ impl<M> Builder<M> {
     /// Default is false.
     #[cfg(feature = "http2")]
     #[cfg_attr(docsrs, doc(cfg(feature = "http2")))]
-    pub fn http2_only(&mut self, enabled: bool) -> &mut Builder {
+    pub fn http2_only(&mut self, enabled: bool) -> &mut Builder<M> {
         if enabled {
             self.version = Proto::Http2
         }
@@ -1108,7 +1110,7 @@ where
 }
 
 #[doc(hidden)]
-impl AssertSendSync for Builder {}
+impl<M: Send + Sync> AssertSendSync for Builder<M> {}
 
 #[doc(hidden)]
 impl AssertSend for ResponseFuture {}

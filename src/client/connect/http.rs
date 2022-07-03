@@ -31,9 +31,10 @@ use super::{Connected, Connection};
 /// transport information such as the remote socket address used.
 #[cfg_attr(docsrs, doc(cfg(feature = "tcp")))]
 #[derive(Clone)]
-pub struct HttpConnector<R = GaiResolver> {
+pub struct HttpConnector<M, R = GaiResolver> {
     config: Arc<Config>,
     resolver: R,
+    _marker: PhantomData<M>
 }
 
 /// Extra information about the transport when an HttpConnector is used.
@@ -86,9 +87,9 @@ struct Config {
 
 // ===== impl HttpConnector =====
 
-impl HttpConnector {
+impl<M> HttpConnector<M> {
     /// Construct a new HttpConnector.
-    pub fn new() -> HttpConnector {
+    pub fn new() -> HttpConnector<M> {
         HttpConnector::new_with_resolver(GaiResolver::new())
     }
 }
@@ -105,11 +106,11 @@ impl HttpConnector<TokioThreadpoolGaiResolver> {
 }
 */
 
-impl<R> HttpConnector<R> {
+impl<M, R> HttpConnector<M, R> {
     /// Construct a new HttpConnector.
     ///
     /// Takes a [`Resolver`](crate::client::connect::dns#resolvers-are-services) to handle DNS lookups.
-    pub fn new_with_resolver(resolver: R) -> HttpConnector<R> {
+    pub fn new_with_resolver(resolver: R) -> HttpConnector<M, R> {
         HttpConnector {
             config: Arc::new(Config {
                 connect_timeout: None,
@@ -124,6 +125,7 @@ impl<R> HttpConnector<R> {
                 recv_buffer_size: None,
             }),
             resolver,
+            _marker: PhantomData
         }
     }
 
@@ -252,10 +254,11 @@ impl<R: fmt::Debug> fmt::Debug for HttpConnector<R> {
     }
 }
 
-impl<R> tower_service::Service<Uri> for HttpConnector<R>
+impl<M, R> tower_service::Service<Uri> for HttpConnector<M, R>
 where
     R: Resolve + Clone + Send + Sync + 'static,
     R::Future: Send,
+    M: Timer + Clone + 'static
 {
     type Response = TcpStream;
     type Error = ConnectError;
@@ -320,9 +323,10 @@ fn get_host_port<'u>(config: &Config, dst: &'u Uri) -> Result<(&'u str, u16), Co
     Ok((host, port))
 }
 
-impl<R> HttpConnector<R>
+impl<M, R> HttpConnector<M, R>
 where
     R: Resolve,
+    M: Timer
 {
     async fn call_async(&mut self, dst: Uri) -> Result<TcpStream, ConnectError> {
         let config = &self.config;
@@ -347,7 +351,7 @@ where
             dns::SocketAddrs::new(addrs)
         };
 
-        let c = ConnectingTcp::new(addrs, config);
+        let c = ConnectingTcp::<M>::new(addrs, config);
 
         let sock = c.connect().await?;
 
@@ -670,8 +674,10 @@ fn connect<M: Timer>(
 
     let connect = socket.connect(*addr);
     Ok(async move {
+        //let a = tokio::time::timeout(Duration::from_micros(3), connect).await;
+        //let b = M::timeout(Duration::from_micros(3), connect).await;
         match connect_timeout {
-            Some(dur) => match M::timeout(dur, connect).await {
+            Some(dur) => match tokio::time::timeout(dur, connect).await {
                 Ok(Ok(s)) => Ok(s),
                 Ok(Err(e)) => Err(e),
                 Err(e) => Err(io::Error::new(io::ErrorKind::TimedOut, e)),

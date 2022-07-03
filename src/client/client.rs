@@ -33,7 +33,7 @@ use crate::rt::Timer;
 // TODO Add B = Body
 pub struct Client<C, M, B> {
     config: Config,
-    conn_builder: conn::Builder,
+    conn_builder: conn::Builder<M>,
     connector: C,
     pool: Pool<PoolClient<B>, M>,
 }
@@ -56,7 +56,7 @@ pub struct ResponseFuture {
 // ===== impl Client =====
 
 #[cfg(feature = "tcp")]
-impl<M> Client<HttpConnector, M, Body> {
+impl<M: Clone + Timer> Client<HttpConnector<M>, M, Body> {
     /// Create a new Client with the default [config](Builder).
     ///
     /// # Note
@@ -66,19 +66,19 @@ impl<M> Client<HttpConnector, M, Body> {
     /// TLS](https://hyper.rs/guides/client/configuration).
     #[cfg_attr(docsrs, doc(cfg(feature = "tcp")))]
     #[inline]
-    pub fn new() -> Client<HttpConnector, M, Body> {
-        Builder::default().build_http()
+    pub fn new() -> Client<HttpConnector<M>, M, Body> {
+        Builder::<M>::default().build_http()
     }
 }
 
 #[cfg(feature = "tcp")]
-impl<M> Default for Client<HttpConnector, M, Body> {
-    fn default() -> Client<HttpConnector, M, Body> {
+impl<M: Clone + Timer> Default for Client<HttpConnector<M>, M, Body> {
+    fn default() -> Client<HttpConnector<M>, M, Body> {
         Client::new()
     }
 }
 
-impl<M> Client<(), M, Body> {
+impl<M: Clone> Client<(), M, Body> {
     /// Create a builder to configure a new `Client`.
     ///
     /// # Example
@@ -99,8 +99,8 @@ impl<M> Client<(), M, Body> {
     /// # fn main() {}
     /// ```
     #[inline]
-    pub fn builder() -> Builder {
-        Builder::default()
+    pub fn builder() -> Builder<M> {
+        Builder::<M>::default()
     }
 }
 
@@ -569,7 +569,7 @@ where
     }
 }
 
-impl<C: Clone, M, B> Clone for Client<C, M, B> {
+impl<C: Clone, M: Clone, B> Clone for Client<C, M, B> {
     fn clone(&self) -> Client<C, M, B> {
         Client {
             config: self.config.clone(),
@@ -900,13 +900,13 @@ fn is_schema_secure(uri: &Uri) -> bool {
 /// ```
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
 #[derive(Clone)]
-pub struct Builder {
+pub struct Builder<M> {
     client_config: Config,
-    conn_builder: conn::Builder,
+    conn_builder: conn::Builder<M>,
     pool_config: pool::Config,
 }
 
-impl Default for Builder {
+impl<M: Clone> Default for Builder<M> {
     fn default() -> Self {
         Self {
             client_config: Config {
@@ -914,7 +914,7 @@ impl Default for Builder {
                 set_host: true,
                 ver: Ver::Auto,
             },
-            conn_builder: conn::Builder::new(),
+            conn_builder: conn::Builder::<M>::new(),
             pool_config: pool::Config {
                 idle_timeout: Some(Duration::from_secs(90)),
                 max_idle_per_host: std::usize::MAX,
@@ -923,7 +923,7 @@ impl Default for Builder {
     }
 }
 
-impl Builder {
+impl<M> Builder<M> where M: Clone{
     #[doc(hidden)]
     #[deprecated(
         note = "name is confusing, to disable the connection pool, call pool_max_idle_per_host(0)"
@@ -1083,7 +1083,7 @@ impl Builder {
     ///
     /// Default is `auto`. In this mode hyper will try to guess which
     /// mode to use
-    pub fn http1_writev(&mut self, enabled: bool) -> &mut Builder {
+    pub fn http1_writev(&mut self, enabled: bool) -> &mut Builder<M> {
         self.conn_builder.http1_writev(enabled);
         self
     }
@@ -1337,12 +1337,13 @@ impl Builder {
 
     /// Builder a client with this configuration and the default `HttpConnector`.
     #[cfg(feature = "tcp")]
-    pub fn build_http<M, B>(&self) -> Client<HttpConnector, M, B>
+    pub fn build_http<B>(&self) -> Client<HttpConnector<M>, M, B>
     where
         B: HttpBody + Send,
         B::Data: Send,
+        M: Timer
     {
-        let mut connector = HttpConnector::new();
+        let mut connector = HttpConnector::<M>::new();
         if self.pool_config.is_enabled() {
             connector.set_keepalive(self.pool_config.idle_timeout);
         }
@@ -1350,7 +1351,7 @@ impl Builder {
     }
 
     /// Combine the configuration of this builder with a connector to create a `Client`.
-    pub fn build<C, M, B>(&self, connector: C) -> Client<C, M, B>
+    pub fn build<C, B>(&self, connector: C) -> Client<C, M, B>
     where
         C: Connect + Clone,
         B: HttpBody + Send,
@@ -1365,7 +1366,7 @@ impl Builder {
     }
 }
 
-impl fmt::Debug for Builder {
+impl<M: fmt::Debug> fmt::Debug for Builder<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Builder")
             .field("client_config", &self.client_config)
