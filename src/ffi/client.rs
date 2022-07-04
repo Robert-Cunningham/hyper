@@ -1,11 +1,10 @@
 use std::ptr;
 use std::sync::Arc;
 
-//use hyper_util::rt::TokioTimer;
 use libc::c_int;
 
 use crate::client::conn;
-use crate::rt::{Executor as _, UnimplemenetedTimer};
+use crate::rt::Executor as _;
 
 use super::error::hyper_code;
 use super::http_types::{hyper_request, hyper_response};
@@ -14,7 +13,7 @@ use super::task::{hyper_executor, hyper_task, hyper_task_return_type, AsTaskType
 
 /// An options builder to configure an HTTP client connection.
 pub struct hyper_clientconn_options {
-    builder: conn::Builder<UnimplemenetedTimer>,
+    builder: conn::Builder,
     /// Use a `Weak` to prevent cycles.
     exec: WeakExec,
 }

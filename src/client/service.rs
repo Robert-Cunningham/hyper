@@ -12,7 +12,7 @@ use super::conn::{Builder, SendRequest};
 use crate::{
     body::HttpBody,
     common::{task, Pin, Poll},
-    service::{MakeConnection, Service}, rt::Timer,
+    service::{MakeConnection, Service},
 };
 
 /// Creates a connection via `SendRequest`.
@@ -21,16 +21,16 @@ use crate::{
 /// a `MakeService` implementation to create connections from some
 /// target `T`.
 #[derive(Debug)]
-pub struct Connect<C, B, T, M> {
+pub struct Connect<C, B, T> {
     inner: C,
-    builder: Builder<M>,
+    builder: Builder,
     _pd: PhantomData<fn(T, B)>,
 }
 
-impl<C, B, T, M> Connect<C, B, T, M> {
+impl<C, B, T> Connect<C, B, T> {
     /// Create a new `Connect` with some inner connector `C` and a connection
     /// builder.
-    pub fn new(inner: C, builder: Builder<M>) -> Self {
+    pub fn new(inner: C, builder: Builder) -> Self {
         Self {
             inner,
             builder,
@@ -39,7 +39,7 @@ impl<C, B, T, M> Connect<C, B, T, M> {
     }
 }
 
-impl<C, B, T, M> Service<T> for Connect<C, B, T, M>
+impl<C, B, T> Service<T> for Connect<C, B, T>
 where
     C: MakeConnection<T>,
     C::Connection: Unpin + Send + 'static,
@@ -48,7 +48,6 @@ where
     B: HttpBody + Unpin + Send + 'static,
     B::Data: Send + Unpin,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer + Send + Sync + Clone,
 {
     type Response = SendRequest<B>;
     type Error = crate::Error;

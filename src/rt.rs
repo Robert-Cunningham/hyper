@@ -11,7 +11,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures_core::{Future, future::BoxFuture};
+use futures_core::Future;
+
+use crate::common::tim::HasSleep;
 
 /// An executor of futures.
 pub trait Executor<Fut> {
@@ -19,40 +21,26 @@ pub trait Executor<Fut> {
     fn execute(&self, fut: Fut);
 }
 
-pub trait Timer: Send + Sync + std::fmt::Debug + Clone + 'static {
-    fn sleep(duration: Duration) -> Box<dyn Sleep + Unpin>;
-    fn sleep_until(deadline: Instant) -> Box<dyn Sleep + Unpin>;
-    fn interval(period: Duration) -> Box<dyn Interval>;
-    //fn timeout<O, T: Future<Output = O>>(duration: Duration, future: T) -> Box<dyn Timeout<O> + Unpin>;
-    //fn timeout<T: Future>(duration: Duration, future: T) -> Box<dyn Timeout<T> + Unpin>;
+pub trait Timer {
+    fn sleep(&self, duration: Duration) -> Box<dyn Sleep + Unpin>;
+    fn sleep_until(&self, deadline: Instant) -> Box<dyn Sleep + Unpin>;
+    fn interval(&self, period: Duration) -> Box<dyn Interval>;
+
+    fn pause(&self);
+    fn advance(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }
 
-// TokioTimer::timeout should work just like tokio::time::timeout.
-// Timer must require the same function signature as tokio::time::timeout.
-
-#[derive(Clone, Debug)]
-pub struct UnimplemenetedTimer;
-
-impl Timer for UnimplemenetedTimer {
-    fn sleep(_duration: Duration) -> Box<dyn Sleep + Unpin> {
-        panic!("Need to configure a timer.")
+//impl Sleep for tokio::time::Sleep {
+impl Sleep for HasSleep {
+    fn is_elapsed(&self) -> bool {
+        self.sleep.is_elapsed()
     }
-    fn sleep_until(_deadline: Instant) -> Box<dyn Sleep + Unpin> {
-        panic!("Need to configure a timer.")
+    fn deadline(&self) -> Instant {
+        self.sleep.deadline().into()
     }
-    fn interval(_period: Duration) -> Box<dyn Interval> {
-        panic!("Need to configure a timer.")
+    fn reset(mut self: Pin<&mut Self>, deadline: Instant) {
+        self.sleep.as_mut().reset(deadline.into())
     }
-    /*
-    fn timeout<O, T: Future<Output = O>>(_duration: Duration, _future: T) -> Box<dyn Timeout<O> + Unpin> {
-        panic!("Need to configure a timer.")
-    }
-    */
-}
-
-pub trait Timer2 {
-    fn sleep(duration: Duration) -> Box<dyn Sleep + Unpin>;
-    //fn timeout<T>(&self, duration: Duration, future: T) -> Box<dyn Timeout<T>>;
 }
 
 // The generic version of tokio::time::Sleep, which itself is the output of tokio::time::sleep
@@ -66,13 +54,3 @@ pub trait Sleep: Send + Sync + Future<Output = ()> {
 pub trait Interval: Send + Sync {
     fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Instant>;
 }
-
-// pub trait Timeout<O>: Send + Sync + Future<Output = Result<O, tokio::time::error::Elapsed>> {
-//     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<O>;
-// }
-
-/*
-pub trait Timeout: Send + Sync + Future {
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll< Result<O::Output, tokio::time::error::Elapsed> >;
-}
-*/

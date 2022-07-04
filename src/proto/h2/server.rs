@@ -1,5 +1,5 @@
 use std::error::Error as StdError;
-use std::marker::{Unpin, PhantomData};
+use std::marker::Unpin;
 #[cfg(feature = "runtime")]
 use std::time::Duration;
 
@@ -75,16 +75,15 @@ impl Default for Config {
 }
 
 pin_project! {
-    pub(crate) struct Server<T, S, B, M, E>
+    pub(crate) struct Server<T, S, B, E, M>
     where
         S: HttpService<Body>,
         B: HttpBody,
-        M: Timer
     {
         exec: E,
+        timer: M,
         service: S,
         state: State<T, B>,
-        _marker: PhantomData<M>
     }
 }
 
@@ -109,16 +108,22 @@ where
     closing: Option<crate::Error>,
 }
 
-impl<T, S, B, M, E> Server<T, S, B, M, E>
+impl<T, S, B, E, M> Server<T, S, B, E, M>
 where
     T: AsyncRead + AsyncWrite + Unpin,
     S: HttpService<Body, ResBody = B>,
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
     B: HttpBody + 'static,
     E: ConnStreamExec<S::Future, B>,
-    M: Timer,
+    M: Timer + Send + Sync + 'static,
 {
-    pub(crate) fn new(io: T, service: S, config: &Config, exec: E) -> Server<T, S, B, M, E> {
+    pub(crate) fn new(
+        io: T,
+        service: S,
+        config: &Config,
+        exec: E,
+        timer: M,
+    ) -> Server<T, S, B, E, M> {
         let mut builder = h2::server::Builder::default();
         builder
             .initial_window_size(config.initial_stream_window_size)
@@ -154,12 +159,12 @@ where
 
         Server {
             exec,
+            timer,
             state: State::Handshaking {
                 ping_config,
                 hs: handshake,
             },
             service,
-            _marker: PhantomData
         }
     }
 
@@ -183,14 +188,14 @@ where
     }
 }
 
-impl<T, S, B, M, E> Future for Server<T, S, B, M, E>
+impl<T, S, B, E, M> Future for Server<T, S, B, E, M>
 where
     T: AsyncRead + AsyncWrite + Unpin,
     S: HttpService<Body, ResBody = B>,
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
     B: HttpBody + 'static,
     E: ConnStreamExec<S::Future, B>,
-    M: Timer,
+    M: Timer + Send + Sync + 'static,
 {
     type Output = crate::Result<Dispatched>;
 
@@ -205,7 +210,7 @@ where
                     let mut conn = ready!(Pin::new(hs).poll(cx).map_err(crate::Error::new_h2))?;
                     let ping = if ping_config.is_enabled() {
                         let pp = conn.ping_pong().expect("conn.ping_pong");
-                        Some(ping::channel::<M>(pp, ping_config.clone()))
+                        Some(ping::channel(pp, ping_config.clone()))
                     } else {
                         None
                     };

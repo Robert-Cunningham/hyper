@@ -54,7 +54,7 @@
 //! # }
 //! ```
 
-use std::{error::Error as StdError, marker::PhantomData};
+use std::error::Error as StdError;
 use std::fmt;
 #[cfg(not(all(feature = "http1", feature = "http2")))]
 use std::marker::PhantomData;
@@ -87,8 +87,8 @@ use crate::upgrade::Upgraded;
 use crate::{Body, Request, Response};
 
 #[cfg(feature = "http1")]
-type Http1Dispatcher<T, B, M> =
-    proto::dispatch::Dispatcher<proto::dispatch::Client<B>, B, T, proto::h1::ClientTransaction, M>;
+type Http1Dispatcher<T, B> =
+    proto::dispatch::Dispatcher<proto::dispatch::Client<B>, B, T, proto::h1::ClientTransaction>;
 
 #[cfg(not(feature = "http1"))]
 type Http1Dispatcher<T, B> = (Never, PhantomData<(T, Pin<Box<B>>)>);
@@ -101,13 +101,13 @@ type Http2ClientTask<B> = (Never, PhantomData<Pin<Box<B>>>);
 
 pin_project! {
     #[project = ProtoClientProj]
-    enum ProtoClient<T, B, M>
+    enum ProtoClient<T, B>
     where
         B: HttpBody,
     {
         H1 {
             #[pin]
-            h1: Http1Dispatcher<T, B, M>,
+            h1: Http1Dispatcher<T, B>,
         },
         H2 {
             #[pin]
@@ -120,12 +120,11 @@ pin_project! {
 ///
 /// This is a shortcut for `Builder::new().handshake(io)`.
 /// See [`client::conn`](crate::client::conn) for more.
-pub async fn handshake<T, M>(
+pub async fn handshake<T>(
     io: T,
-) -> crate::Result<(SendRequest<crate::Body>, Connection<T, crate::Body, M>)>
+) -> crate::Result<(SendRequest<crate::Body>, Connection<T, crate::Body>)>
 where
     T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    M: Timer + Send + Sync + 'static
 {
     Builder::new().handshake(io).await
 }
@@ -140,20 +139,21 @@ pub struct SendRequest<B> {
 /// In most cases, this should just be spawned into an executor, so that it
 /// can process incoming and outgoing messages, notice hangups, and the like.
 #[must_use = "futures do nothing unless polled"]
-pub struct Connection<T, B, M>
+pub struct Connection<T, B>
 where
     T: AsyncRead + AsyncWrite + Send + 'static,
     B: HttpBody + 'static,
 {
-    inner: Option<ProtoClient<T, B, M>>,
+    inner: Option<ProtoClient<T, B>>,
 }
 
 /// A builder to configure an HTTP connection.
 ///
 /// After setting options, the builder is used to create a handshake future.
 #[derive(Clone, Debug)]
-pub struct Builder<M> {
+pub struct Builder {
     pub(super) exec: Exec,
+    pub(super) timer: Tim,
     h09_responses: bool,
     h1_parser_config: ParserConfig,
     h1_writev: Option<bool>,
@@ -168,7 +168,6 @@ pub struct Builder<M> {
     #[cfg(feature = "http2")]
     h2_builder: proto::h2::client::Config,
     version: Proto,
-    _marker: PhantomData<M>
 }
 
 #[derive(Clone, Debug)]
@@ -429,13 +428,12 @@ impl<B> Clone for Http2SendRequest<B> {
 
 // ===== impl Connection
 
-impl<T, B, M> Connection<T, B, M>
+impl<T, B> Connection<T, B>
 where
     T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     B: HttpBody + Unpin + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer + Send + Sync + 'static
 {
     /// Return the inner IO object, and additional information.
     ///
@@ -513,13 +511,12 @@ where
     }
 }
 
-impl<T, B, M> Future for Connection<T, B, M>
+impl<T, B> Future for Connection<T, B>
 where
     T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     B: HttpBody + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer + Send + Sync + 'static,
 {
     type Output = crate::Result<()>;
 
@@ -542,7 +539,7 @@ where
     }
 }
 
-impl<T, B, M> fmt::Debug for Connection<T, B, M>
+impl<T, B> fmt::Debug for Connection<T, B>
 where
     T: AsyncRead + AsyncWrite + fmt::Debug + Send + 'static,
     B: HttpBody + 'static,
@@ -554,14 +551,13 @@ where
 
 // ===== impl Builder
 
-impl<M> Builder<M> 
-    where M: Clone
-{
+impl Builder {
     /// Creates a new connection builder.
     #[inline]
-    pub fn new() -> Builder<M> {
+    pub fn new() -> Builder {
         Builder {
             exec: Exec::Default,
+            timer: Tim::Default,
             h09_responses: false,
             h1_writev: None,
             h1_read_buf_exact_size: None,
@@ -579,12 +575,11 @@ impl<M> Builder<M>
             version: Proto::Http1,
             #[cfg(not(feature = "http1"))]
             version: Proto::Http2,
-            _marker: PhantomData
         }
     }
 
     /// Provide an executor to execute background HTTP2 tasks.
-    pub fn executor<E>(&mut self, exec: E) -> &mut Builder<M>
+    pub fn executor<E>(&mut self, exec: E) -> &mut Builder
     where
         E: Executor<BoxSendFuture> + Send + Sync + 'static,
     {
@@ -592,7 +587,6 @@ impl<M> Builder<M>
         self
     }
 
-    /*
     pub fn timer<T>(&mut self, timer: T) -> &mut Builder
     where
         T: Timer + Send + Sync + 'static,
@@ -600,12 +594,11 @@ impl<M> Builder<M>
         self.timer = Tim::Timer(Arc::new(timer));
         self
     }
-    */
 
     /// Set whether HTTP/0.9 responses should be tolerated.
     ///
     /// Default is false.
-    pub fn http09_responses(&mut self, enabled: bool) -> &mut Builder<M> {
+    pub fn http09_responses(&mut self, enabled: bool) -> &mut Builder {
         self.h09_responses = enabled;
         self
     }
@@ -632,7 +625,7 @@ impl<M> Builder<M>
     pub fn http1_allow_spaces_after_header_name_in_responses(
         &mut self,
         enabled: bool,
-    ) -> &mut Builder<M> {
+    ) -> &mut Builder {
         self.h1_parser_config
             .allow_spaces_after_header_name_in_responses(enabled);
         self
@@ -675,7 +668,7 @@ impl<M> Builder<M>
     pub fn http1_allow_obsolete_multiline_headers_in_responses(
         &mut self,
         enabled: bool,
-    ) -> &mut Builder<M> {
+    ) -> &mut Builder {
         self.h1_parser_config
             .allow_obsolete_multiline_headers_in_responses(enabled);
         self
@@ -693,7 +686,7 @@ impl<M> Builder<M>
     ///
     /// Default is `auto`. In this mode hyper will try to guess which
     /// mode to use
-    pub fn http1_writev(&mut self, enabled: bool) -> &mut Builder<M> {
+    pub fn http1_writev(&mut self, enabled: bool) -> &mut Builder {
         self.h1_writev = Some(enabled);
         self
     }
@@ -704,7 +697,7 @@ impl<M> Builder<M>
     /// Note that this setting does not affect HTTP/2.
     ///
     /// Default is false.
-    pub fn http1_title_case_headers(&mut self, enabled: bool) -> &mut Builder<M> {
+    pub fn http1_title_case_headers(&mut self, enabled: bool) -> &mut Builder {
         self.h1_title_case_headers = enabled;
         self
     }
@@ -722,7 +715,7 @@ impl<M> Builder<M>
     /// Note that this setting does not affect HTTP/2.
     ///
     /// Default is false.
-    pub fn http1_preserve_header_case(&mut self, enabled: bool) -> &mut Builder<M> {
+    pub fn http1_preserve_header_case(&mut self, enabled: bool) -> &mut Builder {
         self.h1_preserve_header_case = enabled;
         self
     }
@@ -737,7 +730,7 @@ impl<M> Builder<M>
     ///
     /// Default is false.
     #[cfg(feature = "ffi")]
-    pub fn http1_preserve_header_order(&mut self, enabled: bool) -> &mut Builder<M> {
+    pub fn http1_preserve_header_order(&mut self, enabled: bool) -> &mut Builder {
         self.h1_preserve_header_order = enabled;
         self
     }
@@ -747,7 +740,7 @@ impl<M> Builder<M>
     /// Note that setting this option unsets the `http1_max_buf_size` option.
     ///
     /// Default is an adaptive read buffer.
-    pub fn http1_read_buf_exact_size(&mut self, sz: Option<usize>) -> &mut Builder<M> {
+    pub fn http1_read_buf_exact_size(&mut self, sz: Option<usize>) -> &mut Builder {
         self.h1_read_buf_exact_size = sz;
         self.h1_max_buf_size = None;
         self
@@ -786,7 +779,7 @@ impl<M> Builder<M>
     /// Default is false.
     #[cfg(feature = "http2")]
     #[cfg_attr(docsrs, doc(cfg(feature = "http2")))]
-    pub fn http2_only(&mut self, enabled: bool) -> &mut Builder<M> {
+    pub fn http2_only(&mut self, enabled: bool) -> &mut Builder {
         if enabled {
             self.version = Proto::Http2
         }
@@ -958,13 +951,12 @@ impl<M> Builder<M>
     pub fn handshake<T, B>(
         &self,
         io: T,
-    ) -> impl Future<Output = crate::Result<(SendRequest<B>, Connection<T, B, M>)>>
+    ) -> impl Future<Output = crate::Result<(SendRequest<B>, Connection<T, B>)>>
     where
         T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
         B: HttpBody + 'static,
         B::Data: Send,
         B::Error: Into<Box<dyn StdError + Send + Sync>>,
-        M: Timer + Send + Sync + 'static
     {
         let opts = self.clone();
 
@@ -1014,7 +1006,7 @@ impl<M> Builder<M>
                 #[cfg(feature = "http2")]
                 Proto::Http2 => {
                     let h2 =
-                        proto::h2::client::handshake::<T, B, M>(io, rx, &opts.h2_builder, opts.exec.clone())
+                        proto::h2::client::handshake(io, rx, &opts.h2_builder, opts.exec.clone())
                             .await?;
                     ProtoClient::H2 { h2 }
                 }
@@ -1058,13 +1050,12 @@ impl fmt::Debug for ResponseFuture {
 
 // ===== impl ProtoClient
 
-impl<T, B, M> Future for ProtoClient<T, B, M>
+impl<T, B> Future for ProtoClient<T, B>
 where
     T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
     B: HttpBody + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer + Send + Sync 
 {
     type Output = crate::Result<proto::Dispatched>;
 
@@ -1092,7 +1083,7 @@ trait AssertSendSync: Send + Sync {}
 impl<B: Send> AssertSendSync for SendRequest<B> {}
 
 #[doc(hidden)]
-impl<T: Send, B: Send, M: Send> AssertSend for Connection<T, B, M>
+impl<T: Send, B: Send> AssertSend for Connection<T, B>
 where
     T: AsyncRead + AsyncWrite + Send + 'static,
     B: HttpBody + 'static,
@@ -1101,7 +1092,7 @@ where
 }
 
 #[doc(hidden)]
-impl<T: Send + Sync, B: Send + Sync, M: Send + Sync> AssertSendSync for Connection<T, B, M>
+impl<T: Send + Sync, B: Send + Sync> AssertSendSync for Connection<T, B>
 where
     T: AsyncRead + AsyncWrite + Send + 'static,
     B: HttpBody + 'static,
@@ -1110,7 +1101,7 @@ where
 }
 
 #[doc(hidden)]
-impl<M: Send + Sync> AssertSendSync for Builder<M> {}
+impl AssertSendSync for Builder {}
 
 #[doc(hidden)]
 impl AssertSend for ResponseFuture {}

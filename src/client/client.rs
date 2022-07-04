@@ -30,12 +30,11 @@ use crate::rt::Timer;
 /// `Client` is cheap to clone and cloning is the recommended way to share a `Client`. The
 /// underlying connection pool will be reused.
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
-// TODO Add B = Body
-pub struct Client<C, M, B> {
+pub struct Client<C, B = Body> {
     config: Config,
-    conn_builder: conn::Builder<M>,
+    conn_builder: conn::Builder,
     connector: C,
-    pool: Pool<PoolClient<B>, M>,
+    pool: Pool<PoolClient<B>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -56,7 +55,7 @@ pub struct ResponseFuture {
 // ===== impl Client =====
 
 #[cfg(feature = "tcp")]
-impl<M: Clone + Timer> Client<HttpConnector<M>, M, Body> {
+impl Client<HttpConnector, Body> {
     /// Create a new Client with the default [config](Builder).
     ///
     /// # Note
@@ -66,19 +65,19 @@ impl<M: Clone + Timer> Client<HttpConnector<M>, M, Body> {
     /// TLS](https://hyper.rs/guides/client/configuration).
     #[cfg_attr(docsrs, doc(cfg(feature = "tcp")))]
     #[inline]
-    pub fn new() -> Client<HttpConnector<M>, M, Body> {
-        Builder::<M>::default().build_http()
+    pub fn new() -> Client<HttpConnector, Body> {
+        Builder::default().build_http()
     }
 }
 
 #[cfg(feature = "tcp")]
-impl<M: Clone + Timer> Default for Client<HttpConnector<M>, M, Body> {
-    fn default() -> Client<HttpConnector<M>, M, Body> {
+impl Default for Client<HttpConnector, Body> {
+    fn default() -> Client<HttpConnector, Body> {
         Client::new()
     }
 }
 
-impl<M: Clone> Client<(), M, Body> {
+impl Client<(), Body> {
     /// Create a builder to configure a new `Client`.
     ///
     /// # Example
@@ -99,18 +98,17 @@ impl<M: Clone> Client<(), M, Body> {
     /// # fn main() {}
     /// ```
     #[inline]
-    pub fn builder() -> Builder<M> {
-        Builder::<M>::default()
+    pub fn builder() -> Builder {
+        Builder::default()
     }
 }
 
-impl<C, M, B> Client<C, M, B>
+impl<C, B> Client<C, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer + Send + Sync + 'static,
 {
     /// Send a `GET` request to the supplied `Uri`.
     ///
@@ -341,7 +339,7 @@ where
     async fn connection_for(
         &self,
         pool_key: PoolKey,
-    ) -> Result<Pooled<PoolClient<B>, M>, ClientConnectError> {
+    ) -> Result<Pooled<PoolClient<B>>, ClientConnectError> {
         // This actually races 2 different futures to try to get a ready
         // connection the fastest, and to reduce connection churn.
         //
@@ -428,7 +426,7 @@ where
     fn connect_to(
         &self,
         pool_key: PoolKey,
-    ) -> impl Lazy<Output = crate::Result<Pooled<PoolClient<B>, M>>> + Unpin {
+    ) -> impl Lazy<Output = crate::Result<Pooled<PoolClient<B>>>> + Unpin {
         let executor = self.conn_builder.exec.clone();
         let pool = self.pool.clone();
         #[cfg(not(feature = "http2"))]
@@ -527,13 +525,12 @@ where
     }
 }
 
-impl<C, M, B> tower_service::Service<Request<B>> for Client<C, M, B>
+impl<C, B> tower_service::Service<Request<B>> for Client<C, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer + Send + Sync + 'static,
 {
     type Response = Response<Body>;
     type Error = crate::Error;
@@ -548,13 +545,12 @@ where
     }
 }
 
-impl<C, M, B> tower_service::Service<Request<B>> for &'_ Client<C, M, B>
+impl<C, B> tower_service::Service<Request<B>> for &'_ Client<C, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer + Send + Sync + 'static,
 {
     type Response = Response<Body>;
     type Error = crate::Error;
@@ -569,8 +565,8 @@ where
     }
 }
 
-impl<C: Clone, M: Clone, B> Clone for Client<C, M, B> {
-    fn clone(&self) -> Client<C, M, B> {
+impl<C: Clone, B> Clone for Client<C, B> {
+    fn clone(&self) -> Client<C, B> {
         Client {
             config: self.config.clone(),
             conn_builder: self.conn_builder.clone(),
@@ -580,7 +576,7 @@ impl<C: Clone, M: Clone, B> Clone for Client<C, M, B> {
     }
 }
 
-impl<C, M, B> fmt::Debug for Client<C, M, B> {
+impl<C, B> fmt::Debug for Client<C, B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Client").finish()
     }
@@ -900,13 +896,13 @@ fn is_schema_secure(uri: &Uri) -> bool {
 /// ```
 #[cfg_attr(docsrs, doc(cfg(any(feature = "http1", feature = "http2"))))]
 #[derive(Clone)]
-pub struct Builder<M> {
+pub struct Builder {
     client_config: Config,
-    conn_builder: conn::Builder<M>,
+    conn_builder: conn::Builder,
     pool_config: pool::Config,
 }
 
-impl<M: Clone> Default for Builder<M> {
+impl Default for Builder {
     fn default() -> Self {
         Self {
             client_config: Config {
@@ -914,7 +910,7 @@ impl<M: Clone> Default for Builder<M> {
                 set_host: true,
                 ver: Ver::Auto,
             },
-            conn_builder: conn::Builder::<M>::new(),
+            conn_builder: conn::Builder::new(),
             pool_config: pool::Config {
                 idle_timeout: Some(Duration::from_secs(90)),
                 max_idle_per_host: std::usize::MAX,
@@ -923,7 +919,7 @@ impl<M: Clone> Default for Builder<M> {
     }
 }
 
-impl<M> Builder<M> where M: Clone{
+impl Builder {
     #[doc(hidden)]
     #[deprecated(
         note = "name is confusing, to disable the connection pool, call pool_max_idle_per_host(0)"
@@ -1083,7 +1079,7 @@ impl<M> Builder<M> where M: Clone{
     ///
     /// Default is `auto`. In this mode hyper will try to guess which
     /// mode to use
-    pub fn http1_writev(&mut self, enabled: bool) -> &mut Builder<M> {
+    pub fn http1_writev(&mut self, enabled: bool) -> &mut Builder {
         self.conn_builder.http1_writev(enabled);
         self
     }
@@ -1324,7 +1320,6 @@ impl<M> Builder<M> where M: Clone{
         self
     }
 
-    /*
     /// Provide a timer to execute background `Connection` tasks.
     pub fn timer<T>(&mut self, timer: T) -> &mut Self
     where
@@ -1333,17 +1328,15 @@ impl<M> Builder<M> where M: Clone{
         self.conn_builder.timer(timer);
         self
     }
-    */
 
     /// Builder a client with this configuration and the default `HttpConnector`.
     #[cfg(feature = "tcp")]
-    pub fn build_http<B>(&self) -> Client<HttpConnector<M>, M, B>
+    pub fn build_http<B>(&self) -> Client<HttpConnector, B>
     where
         B: HttpBody + Send,
         B::Data: Send,
-        M: Timer
     {
-        let mut connector = HttpConnector::<M>::new();
+        let mut connector = HttpConnector::new();
         if self.pool_config.is_enabled() {
             connector.set_keepalive(self.pool_config.idle_timeout);
         }
@@ -1351,7 +1344,7 @@ impl<M> Builder<M> where M: Clone{
     }
 
     /// Combine the configuration of this builder with a connector to create a `Client`.
-    pub fn build<C, B>(&self, connector: C) -> Client<C, M, B>
+    pub fn build<C, B>(&self, connector: C) -> Client<C, B>
     where
         C: Connect + Clone,
         B: HttpBody + Send,
@@ -1361,12 +1354,16 @@ impl<M> Builder<M> where M: Clone{
             config: self.client_config,
             conn_builder: self.conn_builder.clone(),
             connector,
-            pool: Pool::new(self.pool_config, &self.conn_builder.exec),
+            pool: Pool::new(
+                self.pool_config,
+                &self.conn_builder.exec,
+                &self.conn_builder.timer,
+            ),
         }
     }
 }
 
-impl<M: fmt::Debug> fmt::Debug for Builder<M> {
+impl fmt::Debug for Builder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Builder")
             .field("client_config", &self.client_config)

@@ -15,6 +15,7 @@ use pin_project_lite::pin_project;
 use tokio::net::{TcpSocket, TcpStream};
 use tracing::{debug, trace, warn};
 
+use crate::common::tim::Tim;
 use crate::rt::{Sleep, Timer};
 
 use super::dns::{self, resolve, GaiResolver, Resolve};
@@ -31,10 +32,10 @@ use super::{Connected, Connection};
 /// transport information such as the remote socket address used.
 #[cfg_attr(docsrs, doc(cfg(feature = "tcp")))]
 #[derive(Clone)]
-pub struct HttpConnector<M, R = GaiResolver> {
+pub struct HttpConnector<R = GaiResolver> {
     config: Arc<Config>,
     resolver: R,
-    _marker: PhantomData<M>
+    timer: Tim,
 }
 
 /// Extra information about the transport when an HttpConnector is used.
@@ -87,9 +88,9 @@ struct Config {
 
 // ===== impl HttpConnector =====
 
-impl<M> HttpConnector<M> {
+impl HttpConnector {
     /// Construct a new HttpConnector.
-    pub fn new() -> HttpConnector<M> {
+    pub fn new() -> HttpConnector {
         HttpConnector::new_with_resolver(GaiResolver::new())
     }
 }
@@ -106,11 +107,11 @@ impl HttpConnector<TokioThreadpoolGaiResolver> {
 }
 */
 
-impl<M, R> HttpConnector<M, R> {
+impl<R> HttpConnector<R> {
     /// Construct a new HttpConnector.
     ///
     /// Takes a [`Resolver`](crate::client::connect::dns#resolvers-are-services) to handle DNS lookups.
-    pub fn new_with_resolver(resolver: R) -> HttpConnector<M, R> {
+    pub fn new_with_resolver(resolver: R) -> HttpConnector<R> {
         HttpConnector {
             config: Arc::new(Config {
                 connect_timeout: None,
@@ -125,7 +126,7 @@ impl<M, R> HttpConnector<M, R> {
                 recv_buffer_size: None,
             }),
             resolver,
-            _marker: PhantomData
+            timer: Tim::Default,
         }
     }
 
@@ -254,11 +255,10 @@ impl<R: fmt::Debug> fmt::Debug for HttpConnector<R> {
     }
 }
 
-impl<M, R> tower_service::Service<Uri> for HttpConnector<M, R>
+impl<R> tower_service::Service<Uri> for HttpConnector<R>
 where
     R: Resolve + Clone + Send + Sync + 'static,
     R::Future: Send,
-    M: Timer + Clone + 'static
 {
     type Response = TcpStream;
     type Error = ConnectError;
@@ -323,10 +323,9 @@ fn get_host_port<'u>(config: &Config, dst: &'u Uri) -> Result<(&'u str, u16), Co
     Ok((host, port))
 }
 
-impl<M, R> HttpConnector<M, R>
+impl<R> HttpConnector<R>
 where
     R: Resolve,
-    M: Timer
 {
     async fn call_async(&mut self, dst: Uri) -> Result<TcpStream, ConnectError> {
         let config = &self.config;
@@ -351,7 +350,7 @@ where
             dns::SocketAddrs::new(addrs)
         };
 
-        let c = ConnectingTcp::<M>::new(addrs, config);
+        let c = ConnectingTcp::new(addrs, config, self.timer.clone());
 
         let sock = c.connect().await?;
 
@@ -480,44 +479,52 @@ impl StdError for ConnectError {
     }
 }
 
-struct ConnectingTcp<'a, M> {
+struct ConnectingTcp<'a> {
     preferred: ConnectingTcpRemote,
     fallback: Option<ConnectingTcpFallback>,
     config: &'a Config,
-    marker: PhantomData<M>,
 }
 
-impl<'a, M: Timer> ConnectingTcp<'a, M> {
-    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config) -> Self {
+impl<'a> ConnectingTcp<'a> {
+    fn new(remote_addrs: dns::SocketAddrs, config: &'a Config, timer: Tim) -> Self {
         if let Some(fallback_timeout) = config.happy_eyeballs_timeout {
             let (preferred_addrs, fallback_addrs) = remote_addrs
                 .split_by_preference(config.local_address_ipv4, config.local_address_ipv6);
             if fallback_addrs.is_empty() {
-                return ConnectingTcp::<M> {
-                    preferred: ConnectingTcpRemote::new(preferred_addrs, config.connect_timeout),
+                return ConnectingTcp {
+                    preferred: ConnectingTcpRemote::new(
+                        preferred_addrs,
+                        config.connect_timeout,
+                        timer.clone(),
+                    ),
                     fallback: None,
                     config,
-                    marker: PhantomData,
                 };
             }
 
             //let t2 = timer.clone();
 
             ConnectingTcp {
-                preferred: ConnectingTcpRemote::new(preferred_addrs, config.connect_timeout),
+                preferred: ConnectingTcpRemote::new(
+                    preferred_addrs,
+                    config.connect_timeout,
+                    timer.clone(),
+                ),
                 fallback: Some(ConnectingTcpFallback {
-                    delay: M::sleep(fallback_timeout),
-                    remote: ConnectingTcpRemote::new(fallback_addrs, config.connect_timeout),
+                    delay: timer.clone().sleep(fallback_timeout),
+                    remote: ConnectingTcpRemote::new(
+                        fallback_addrs,
+                        config.connect_timeout,
+                        timer.clone(),
+                    ),
                 }),
                 config,
-                marker: PhantomData,
             }
         } else {
             ConnectingTcp {
-                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout),
+                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout, timer),
                 fallback: None,
                 config,
-                marker: PhantomData,
             }
         }
     }
@@ -531,25 +538,27 @@ struct ConnectingTcpFallback {
 struct ConnectingTcpRemote {
     addrs: dns::SocketAddrs,
     connect_timeout: Option<Duration>,
+    timer: Tim,
 }
 
 impl ConnectingTcpRemote {
-    fn new(addrs: dns::SocketAddrs, connect_timeout: Option<Duration>) -> Self {
+    fn new(addrs: dns::SocketAddrs, connect_timeout: Option<Duration>, timer: Tim) -> Self {
         let connect_timeout = connect_timeout.map(|t| t / (addrs.len() as u32));
 
         Self {
             addrs,
             connect_timeout,
+            timer,
         }
     }
 }
 
 impl ConnectingTcpRemote {
-    async fn connect<M: Timer>(&mut self, config: &Config) -> Result<TcpStream, ConnectError> {
+    async fn connect(&mut self, config: &Config) -> Result<TcpStream, ConnectError> {
         let mut err = None;
         for addr in &mut self.addrs {
             debug!("connecting to {}", addr);
-            match connect::<M>(&addr, config, self.connect_timeout)?.await {
+            match connect(&addr, config, self.connect_timeout)?.await {
                 Ok(tcp) => {
                     debug!("connected to {}", addr);
                     return Ok(tcp);
@@ -599,7 +608,7 @@ fn bind_local_address(
     Ok(())
 }
 
-fn connect<M: Timer>(
+fn connect(
     addr: &SocketAddr,
     config: &Config,
     connect_timeout: Option<Duration>,
@@ -674,8 +683,6 @@ fn connect<M: Timer>(
 
     let connect = socket.connect(*addr);
     Ok(async move {
-        //let a = tokio::time::timeout(Duration::from_micros(3), connect).await;
-        //let b = M::timeout(Duration::from_micros(3), connect).await;
         match connect_timeout {
             Some(dur) => match tokio::time::timeout(dur, connect).await {
                 Ok(Ok(s)) => Ok(s),
@@ -688,17 +695,15 @@ fn connect<M: Timer>(
     })
 }
 
-impl<M> ConnectingTcp<'_, M> 
-where M: Timer
-{
+impl ConnectingTcp<'_> {
     async fn connect(mut self) -> Result<TcpStream, ConnectError> {
         match self.fallback {
-            None => self.preferred.connect::<M>(self.config).await,
+            None => self.preferred.connect(self.config).await,
             Some(mut fallback) => {
-                let preferred_fut = self.preferred.connect::<M>(self.config);
+                let preferred_fut = self.preferred.connect(self.config);
                 futures_util::pin_mut!(preferred_fut);
 
-                let fallback_fut = fallback.remote.connect::<M>(self.config);
+                let fallback_fut = fallback.remote.connect(self.config);
                 futures_util::pin_mut!(fallback_fut);
 
                 let fallback_delay = fallback.delay;
@@ -734,6 +739,8 @@ mod tests {
     use std::io;
 
     use ::http::Uri;
+
+    use crate::common::tim::Tim;
 
     use super::super::sealed::{Connect, ConnectSvc};
     use super::{Config, ConnectError, HttpConnector};
@@ -961,7 +968,8 @@ mod tests {
                         send_buffer_size: None,
                         recv_buffer_size: None,
                     };
-                    let connecting_tcp = ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg);
+                    let connecting_tcp =
+                        ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg, Tim::Default);
                     let start = Instant::now();
                     Ok::<_, ConnectError>((start, ConnectingTcp::connect(connecting_tcp).await?))
                 })

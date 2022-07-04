@@ -9,11 +9,10 @@ use super::{Http1Transaction, Wants};
 use crate::body::{Body, DecodedLength, HttpBody};
 use crate::common::{task, Future, Pin, Poll, Unpin};
 use crate::proto::{BodyLength, Conn, Dispatched, MessageHead, RequestHead};
-use crate::rt::Timer;
 use crate::upgrade::OnUpgrade;
 
-pub(crate) struct Dispatcher<D, Bs: HttpBody, I, T, M> {
-    conn: Conn<I, Bs::Data, T, M>,
+pub(crate) struct Dispatcher<D, Bs: HttpBody, I, T> {
+    conn: Conn<I, Bs::Data, T>,
     dispatch: D,
     body_tx: Option<crate::body::Sender>,
     body_rx: Pin<Box<Option<Bs>>>,
@@ -56,7 +55,7 @@ cfg_client! {
     type ClientRx<B> = crate::client::dispatch::Receiver<Request<B>, http::Response<Body>>;
 }
 
-impl<D, Bs, I, T, M> Dispatcher<D, Bs, I, T, M>
+impl<D, Bs, I, T> Dispatcher<D, Bs, I, T>
 where
     D: Dispatch<
             PollItem = MessageHead<T::Outgoing>,
@@ -68,9 +67,8 @@ where
     T: Http1Transaction + Unpin,
     Bs: HttpBody + 'static,
     Bs::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer + Send + Sync + 'static,
 {
-    pub(crate) fn new(dispatch: D, conn: Conn<I, Bs::Data, T, M>) -> Self {
+    pub(crate) fn new(dispatch: D, conn: Conn<I, Bs::Data, T>) -> Self {
         Dispatcher {
             conn,
             dispatch,
@@ -407,7 +405,7 @@ where
     }
 }
 
-impl<D, Bs, I, T, M> Future for Dispatcher<D, Bs, I, T, M>
+impl<D, Bs, I, T> Future for Dispatcher<D, Bs, I, T>
 where
     D: Dispatch<
             PollItem = MessageHead<T::Outgoing>,
@@ -419,7 +417,6 @@ where
     T: Http1Transaction + Unpin,
     Bs: HttpBody + 'static,
     Bs::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer + Send + Sync + 'static,
 {
     type Output = crate::Result<Dispatched>;
 

@@ -13,23 +13,21 @@ use crate::common::exec::{ConnStreamExec, NewSvcExec};
 use crate::common::{task, Future, Pin, Poll, Unpin};
 use crate::service::{HttpService, MakeServiceRef};
 
-use crate::rt::Timer;
-
 pin_project! {
     #[allow(missing_debug_implementations)]
-    pub struct Graceful<I, S, F, M, E> {
+    pub struct Graceful<I, S, F, E> {
         #[pin]
-        state: State<I, S, F, M, E>,
+        state: State<I, S, F, E>,
     }
 }
 
 pin_project! {
     #[project = StateProj]
-    pub(super) enum State<I, S, F, M, E> {
+    pub(super) enum State<I, S, F, E> {
         Running {
             drain: Option<(Signal, Watch)>,
             #[pin]
-            server: Server<I, S, M, E>,
+            server: Server<I, S, E>,
             #[pin]
             signal: F,
         },
@@ -37,8 +35,8 @@ pin_project! {
     }
 }
 
-impl<I, S, F, M, E> Graceful<I, S, F, M, E> {
-    pub(super) fn new(server: Server<I, S, M, E>, signal: F) -> Self {
+impl<I, S, F, E> Graceful<I, S, F, E> {
+    pub(super) fn new(server: Server<I, S, E>, signal: F) -> Self {
         let drain = Some(drain::channel());
         Graceful {
             state: State::Running {
@@ -50,7 +48,7 @@ impl<I, S, F, M, E> Graceful<I, S, F, M, E> {
     }
 }
 
-impl<I, IO, IE, S, B, F, M, E> Future for Graceful<I, S, F, M, E>
+impl<I, IO, IE, S, B, F, E> Future for Graceful<I, S, F, E>
 where
     I: Accept<Conn = IO, Error = IE>,
     IE: Into<Box<dyn StdError + Send + Sync>>,
@@ -61,8 +59,7 @@ where
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
     F: Future<Output = ()>,
     E: ConnStreamExec<<S::Service as HttpService<Body>>::Future, B>,
-    E: NewSvcExec<IO, S::Future, S::Service, M, E, GracefulWatcher>,
-    M: Timer + Send + Sync
+    E: NewSvcExec<IO, S::Future, S::Service, E, GracefulWatcher>,
 {
     type Output = crate::Result<()>;
 
@@ -102,24 +99,23 @@ where
 #[derive(Clone)]
 pub struct GracefulWatcher(Watch);
 
-impl<I, S, M, E> Watcher<I, S, M, E> for GracefulWatcher
+impl<I, S, E> Watcher<I, S, E> for GracefulWatcher
 where
     I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     S: HttpService<Body>,
     E: ConnStreamExec<S::Future, S::ResBody>,
     S::ResBody: 'static,
     <S::ResBody as HttpBody>::Error: Into<Box<dyn StdError + Send + Sync>>,
-    M: Timer + Send + Sync
 {
     type Future =
-        Watching<UpgradeableConnection<I, S, M, E>, fn(Pin<&mut UpgradeableConnection<I, S, M, E>>)>;
+        Watching<UpgradeableConnection<I, S, E>, fn(Pin<&mut UpgradeableConnection<I, S, E>>)>;
 
-    fn watch(&self, conn: UpgradeableConnection<I, S, M, E>) -> Self::Future {
+    fn watch(&self, conn: UpgradeableConnection<I, S, E>) -> Self::Future {
         self.0.clone().watch(conn, on_drain)
     }
 }
 
-fn on_drain<I, S, M, E>(conn: Pin<&mut UpgradeableConnection<I, S, M, E>>)
+fn on_drain<I, S, E>(conn: Pin<&mut UpgradeableConnection<I, S, E>>)
 where
     S: HttpService<Body>,
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
@@ -127,7 +123,6 @@ where
     S::ResBody: HttpBody + 'static,
     <S::ResBody as HttpBody>::Error: Into<Box<dyn StdError + Send + Sync>>,
     E: ConnStreamExec<S::Future, S::ResBody>,
-    M: Timer + Send + Sync,
 {
     conn.graceful_shutdown()
 }

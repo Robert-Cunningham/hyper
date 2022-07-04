@@ -1,8 +1,6 @@
 use std::fmt;
 use std::io;
-use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpListener as StdTcpListener};
-use std::ops::DerefMut;
 use std::time::Duration;
 
 use tokio::net::{TcpListener, TcpStream};
@@ -17,19 +15,17 @@ use super::accept::Accept;
 
 /// A stream of connections from binding to an address.
 #[must_use = "streams do nothing unless polled"]
-pub struct AddrIncoming<M> {
+pub struct AddrIncoming {
     addr: SocketAddr,
     listener: TcpListener,
     sleep_on_errors: bool,
     tcp_keepalive_timeout: Option<Duration>,
     tcp_nodelay: bool,
-    timeout: Option<Pin<Box<dyn Sleep + Unpin>>>,
-    _marker: PhantomData<M>, 
+    timeout: Option<Pin<Box<dyn Sleep>>>,
+    timer: Tim,
 }
 
-impl<M> Unpin for AddrIncoming<M> {}
-
-impl<M> AddrIncoming<M> {
+impl AddrIncoming {
     pub(super) fn new(addr: &SocketAddr) -> crate::Result<Self> {
         let std_listener = StdTcpListener::bind(addr).map_err(crate::Error::new_listen)?;
 
@@ -60,7 +56,7 @@ impl<M> AddrIncoming<M> {
             tcp_keepalive_timeout: None,
             tcp_nodelay: false,
             timeout: None,
-            _marker: PhantomData
+            timer: Tim::Default,
         })
     }
 
@@ -103,9 +99,6 @@ impl<M> AddrIncoming<M> {
     pub fn set_sleep_on_errors(&mut self, val: bool) {
         self.sleep_on_errors = val;
     }
-}
-
-impl<M: Timer> AddrIncoming<M> {
 
     fn poll_next_(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<TcpStream>> {
         // Check if a previous timeout is active that was set by IO errors.
@@ -141,7 +134,7 @@ impl<M: Timer> AddrIncoming<M> {
                         error!("accept error: {}", e);
 
                         // Sleep 1s.
-                        let mut timeout = Box::into_pin(M::sleep(Duration::from_secs(1)));
+                        let mut timeout = Box::into_pin(self.timer.sleep(Duration::from_secs(1)));
 
                         match timeout.as_mut().poll(cx) {
                             Poll::Ready(()) => {
@@ -162,7 +155,7 @@ impl<M: Timer> AddrIncoming<M> {
     }
 }
 
-impl<M: Timer> Accept for AddrIncoming<M> {
+impl Accept for AddrIncoming {
     type Conn = TcpStream;
     type Error = io::Error;
 
@@ -191,7 +184,7 @@ fn is_connection_error(e: &io::Error) -> bool {
     )
 }
 
-impl<M> fmt::Debug for AddrIncoming<M> {
+impl fmt::Debug for AddrIncoming {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AddrIncoming")
             .field("addr", &self.addr)
