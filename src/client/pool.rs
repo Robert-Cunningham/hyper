@@ -5,7 +5,6 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, Weak};
 
 use std::time::{Duration, Instant};
-//use tokio::time::{Duration, Instant};
 
 use futures_channel::oneshot;
 use tracing::{debug, trace};
@@ -14,6 +13,7 @@ use super::client::Ver;
 use crate::common::tim::Tim;
 use crate::common::{exec::Exec, task, Future, Pin, Poll, Unpin};
 use crate::rt::Interval;
+//use crate::rt::Timer;
 
 // FIXME: allow() required due to `impl Trait` leaking types to this lint
 #[allow(missing_debug_implementations)]
@@ -800,6 +800,7 @@ mod tests {
     use super::{Connecting, Key, Pool, Poolable, Reservation, WeakOpt};
     use crate::common::{exec::Exec, task, tim::Tim, Future, Pin};
     use crate::rt::Timer;
+    use hyper_util::rt::TokioTimer;
 
     /// Test unique reservations.
     #[derive(Debug, PartialEq, Eq)]
@@ -896,6 +897,7 @@ mod tests {
     #[cfg(feature = "runtime")]
     #[tokio::test]
     async fn test_pool_checkout_removes_expired() {
+
         let pool = pool_no_timer();
         let key = host_key("foo");
 
@@ -907,7 +909,11 @@ mod tests {
             pool.locked().idle.get(&key).map(|entries| entries.len()),
             Some(3)
         );
-        Tim::Default.sleep(pool.locked().timeout.unwrap()).await;
+        //let a = Arc::new(TokioTimer {});
+        let a = TokioTimer;
+        //let b = Tim::Timer(a);
+        use crate::rt::Timer;
+        a.sleep(pool.locked().timeout.unwrap()).await;
 
         let mut checkout = pool.checkout(key.clone());
         let poll_once = PollOnce(&mut checkout);

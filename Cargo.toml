@@ -66,6 +66,7 @@ tokio-test = "0.4"
 tokio-util = { version = "0.7", features = ["codec"] }
 tower = { version = "0.4", features = ["make", "util"] }
 url = "2.2"
+hyper-util = {path = "../hyper-util"}
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dev-dependencies]
 pnet_datalink = "0.27.2"
@@ -99,13 +100,13 @@ stream = []
 runtime = [
     "tcp",
     "tokio/rt",
-    "tokio/time",
+    #"tokio/time",
 ]
 tcp = [
     "socket2",
     "tokio/net",
     "tokio/rt",
-    "tokio/time",
+    #"tokio/time",
 ]
 
 # C-API support (currently unstable (no semver))

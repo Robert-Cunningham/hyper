@@ -13,8 +13,6 @@ use std::{
 
 use futures_core::Future;
 
-use crate::common::tim::HasSleep;
-
 /// An executor of futures.
 pub trait Executor<Fut> {
     /// Place the future into the executor to be run.
@@ -25,12 +23,9 @@ pub trait Timer {
     fn sleep(&self, duration: Duration) -> Box<dyn Sleep + Unpin>;
     fn sleep_until(&self, deadline: Instant) -> Box<dyn Sleep + Unpin>;
     fn interval(&self, period: Duration) -> Box<dyn Interval>;
-
-    fn pause(&self);
-    fn advance(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }
 
-//impl Sleep for tokio::time::Sleep {
+/*
 impl Sleep for HasSleep {
     fn is_elapsed(&self) -> bool {
         self.sleep.is_elapsed()
@@ -42,6 +37,7 @@ impl Sleep for HasSleep {
         self.sleep.as_mut().reset(deadline.into())
     }
 }
+*/
 
 // The generic version of tokio::time::Sleep, which itself is the output of tokio::time::sleep
 pub trait Sleep: Send + Sync + Future<Output = ()> {
