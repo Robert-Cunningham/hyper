@@ -654,7 +654,7 @@ cfg_client! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{proto::h1::ClientTransaction, common::tim::Tim};
+    use crate::{proto::h1::ClientTransaction};
     use std::time::Duration;
 
     #[test]

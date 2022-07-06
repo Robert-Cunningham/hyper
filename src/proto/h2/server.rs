@@ -15,7 +15,6 @@ use tracing::{debug, trace, warn};
 use super::{ping, PipeToSendStream, SendBuf};
 use crate::body::HttpBody;
 use crate::common::exec::ConnStreamExec;
-use crate::common::tim::Tim;
 use crate::common::{date, task, Future, Pin, Poll};
 use crate::ext::Protocol;
 use crate::headers;

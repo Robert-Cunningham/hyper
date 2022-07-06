@@ -587,6 +587,7 @@ impl Builder {
         self
     }
 
+    /// Provide a tiemr to execute background tasks.
     pub fn timer<T>(&mut self, timer: T) -> &mut Builder
     where
         T: Timer + Send + Sync + 'static,

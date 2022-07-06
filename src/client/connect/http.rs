@@ -130,6 +130,7 @@ impl<R> HttpConnector<R> {
         }
     }
 
+    /// Provide a timer to run background tasks.
     pub fn set_timer<T: Timer + Send + Sync + 'static>(&mut self, timer: T) {
         self.timer = Some(Arc::new(timer)); 
     }
@@ -738,8 +739,6 @@ mod tests {
     use std::io;
 
     use ::http::Uri;
-
-    use crate::common::tim::Tim;
 
     use super::super::sealed::{Connect, ConnectSvc};
     use super::{Config, ConnectError, HttpConnector};

@@ -1509,11 +1509,7 @@ fn extend(dst: &mut Vec<u8>, data: &[u8]) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use bytes::BytesMut;
-
-    use crate::common::tim::{Tim};
 
     use super::*;
 

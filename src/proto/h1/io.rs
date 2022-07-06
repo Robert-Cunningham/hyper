@@ -676,10 +676,8 @@ enum WriteStrategy {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::tim::Tim;
-
     use super::*;
-    use std::{time::Duration, sync::Arc};
+    use std::{time::Duration};
     use tokio_test::io::Builder as Mock;
 
     // #[cfg(feature = "nightly")]

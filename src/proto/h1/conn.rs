@@ -1050,8 +1050,6 @@ impl State {
 
 #[cfg(test)]
 mod tests {
-    use crate::rt::Timer;
-
     #[cfg(feature = "nightly")]
     #[bench]
     fn bench_read_head_short(b: &mut ::test::Bencher) {
