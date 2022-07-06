@@ -9,9 +9,6 @@ use std::{
 use futures_util::Future;
 use hyper::rt::{Interval, Sleep, Timer};
 
-/// An Executor that uses the tokio runtime.
-pub struct TokioExecutor;
-
 /// A Timer that uses the tokio runtime.
 
 #[derive(Clone, Debug)]
@@ -55,6 +52,7 @@ impl Interval for TokioInterval {
     }
 }
 
+/*
 struct TokioTimeout<T> {
     inner: Pin<Box<tokio::time::Timeout<T>>>,
 }
@@ -68,7 +66,6 @@ impl<T> Future for TokioTimeout<T> where T: Future {
 
 }
 
-/*
 impl<T> Timeout<T> for TokioTimeout<T>
 where
     T: Future + Send + Sync,
@@ -81,6 +78,7 @@ where
 }
 */
 
+// A Sleep object that uses the tokio runtime.
 // Use TokioSleep to get tokio::time::Sleep to implement Unpin.
 // see https://docs.rs/tokio/latest/tokio/time/struct.Sleep.html
 pub(crate) struct TokioSleep {
@@ -94,9 +92,6 @@ impl Future for TokioSleep {
         self.inner.as_mut().poll(cx)
     }
 }
-
-// Use HasSleep to get tokio::time::Sleep to implement Unpin.
-// see https://docs.rs/tokio/latest/tokio/time/struct.Sleep.html
 
 impl Sleep for TokioSleep {
     fn is_elapsed(&self) -> bool {

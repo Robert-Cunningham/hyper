@@ -56,7 +56,7 @@ impl AddrIncoming {
             tcp_keepalive_timeout: None,
             tcp_nodelay: false,
             timeout: None,
-            timer: Tim::Default,
+            timer: Tim::None,
         })
     }
 

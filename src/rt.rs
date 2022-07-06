@@ -40,7 +40,7 @@ impl Sleep for HasSleep {
 */
 
 // The generic version of tokio::time::Sleep, which itself is the output of tokio::time::sleep
-pub trait Sleep: Send + Sync + Future<Output = ()> {
+pub trait Sleep: Send + Sync + Unpin + Future<Output = ()> {
     fn deadline(&self) -> Instant;
     fn reset(self: Pin<&mut Self>, deadline: Instant);
     fn is_elapsed(&self) -> bool;

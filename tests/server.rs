@@ -1147,7 +1147,9 @@ async fn disable_keep_alive_mid_request() {
     });
 
     let (socket, _) = listener.accept().await.unwrap();
-    let srv = Http::new().with_timer(TokioTimer).serve_connection(socket, HelloWorld);
+    let srv = Http::new()
+        .with_timer(TokioTimer)
+        .serve_connection(socket, HelloWorld);
     future::try_select(srv, rx1)
         .then(|r| match r {
             Ok(Either::Left(_)) => panic!("expected rx first"),
@@ -1200,7 +1202,9 @@ async fn disable_keep_alive_post_request() {
         stream: socket,
         _debug: dropped2,
     };
-    let server = Http::new().with_timer(TokioTimer).serve_connection(transport, HelloWorld);
+    let server = Http::new()
+        .with_timer(TokioTimer)
+        .serve_connection(transport, HelloWorld);
     let fut = future::try_select(server, rx1).then(|r| match r {
         Ok(Either::Left(_)) => panic!("expected rx first"),
         Ok(Either::Right(((), mut conn))) => {
@@ -2632,9 +2636,7 @@ async fn http2_keep_alive_count_server_pings() {
             .http2_keep_alive_timeout(Duration::from_secs(1))
             .serve_connection(socket, unreachable_service());
 
-        http
-            .await
-            .expect("serve_connection");
+        http.await.expect("serve_connection");
     });
 
     // Spawn a "client" conn that only reads until EOF

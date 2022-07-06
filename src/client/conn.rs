@@ -557,7 +557,7 @@ impl Builder {
     pub fn new() -> Builder {
         Builder {
             exec: Exec::Default,
-            timer: Tim::Default,
+            timer: Tim::None,
             h09_responses: false,
             h1_writev: None,
             h1_read_buf_exact_size: None,

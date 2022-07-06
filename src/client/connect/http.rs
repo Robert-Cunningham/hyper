@@ -126,7 +126,7 @@ impl<R> HttpConnector<R> {
                 recv_buffer_size: None,
             }),
             resolver,
-            timer: Tim::Default,
+            timer: Tim::None,
         }
     }
 
@@ -521,7 +521,7 @@ impl<'a> ConnectingTcp<'a> {
             }
         } else {
             ConnectingTcp {
-                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout, /*timer*/),
+                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout),
                 fallback: None,
                 config,
             }
@@ -683,7 +683,7 @@ fn connect(
     let connect = socket.connect(*addr);
     Ok(async move {
         match connect_timeout {
-            Some(dur) => match tokio::time::timeout(dur, connect).await {
+            Some(dur) => match tokio::time::timeout(dur, connect).await { // TODO(robert)
                 Ok(Ok(s)) => Ok(s),
                 Ok(Err(e)) => Err(e),
                 Err(e) => Err(io::Error::new(io::ErrorKind::TimedOut, e)),
@@ -968,7 +968,7 @@ mod tests {
                         recv_buffer_size: None,
                     };
                     let connecting_tcp =
-                        ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg, Tim::Default);
+                        ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg, Tim::None);
                     let start = Instant::now();
                     Ok::<_, ConnectError>((start, ConnectingTcp::connect(connecting_tcp).await?))
                 })

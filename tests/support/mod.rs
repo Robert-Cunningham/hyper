@@ -10,7 +10,6 @@ use hyper::client::HttpConnector;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Client, Request, Response, Server, Version};
 
-
 pub use futures_util::{
     future, FutureExt as _, StreamExt as _, TryFutureExt as _, TryStreamExt as _,
 };

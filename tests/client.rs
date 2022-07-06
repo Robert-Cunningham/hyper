@@ -1142,10 +1142,7 @@ mod dispatch_impl {
         let (closes_tx, closes) = mpsc::channel(10);
         let mut http = HttpConnector::new();
         http.set_timer(TokioTimer);
-        let client = Client::builder().build(DebugConnector::with_http_and_closes(
-            http,
-            closes_tx,
-        ));
+        let client = Client::builder().build(DebugConnector::with_http_and_closes(http, closes_tx));
 
         let (tx1, rx1) = oneshot::channel();
 
@@ -1214,13 +1211,11 @@ mod dispatch_impl {
             let _ = tx1.send(());
         });
 
-                let mut http = HttpConnector::new();
-                http.set_timer(TokioTimer);
+        let mut http = HttpConnector::new();
+        http.set_timer(TokioTimer);
         let res = {
-            let client = Client::builder().build(DebugConnector::with_http_and_closes(
-                http,
-                closes_tx,
-            ));
+            let client =
+                Client::builder().build(DebugConnector::with_http_and_closes(http, closes_tx));
 
             let req = Request::builder()
                 .uri(&*format!("http://{}/a", addr))
@@ -1280,12 +1275,11 @@ mod dispatch_impl {
             support::runtime().block_on(client_drop_rx.into_future())
         });
 
-            let mut http = HttpConnector::new();
-            http.set_timer(TokioTimer);
-        let client = Client::builder().timer(TokioTimer).build(DebugConnector::with_http_and_closes(
-            http,
-            closes_tx,
-        ));
+        let mut http = HttpConnector::new();
+        http.set_timer(TokioTimer);
+        let client = Client::builder()
+            .timer(TokioTimer)
+            .build(DebugConnector::with_http_and_closes(http, closes_tx));
 
         let req = Request::builder()
             .uri(&*format!("http://{}/a", addr))
@@ -1348,10 +1342,8 @@ mod dispatch_impl {
         http.set_timer(TokioTimer);
 
         let res = {
-            let client = Client::builder().build(DebugConnector::with_http_and_closes(
-                http,
-                closes_tx,
-            ));
+            let client =
+                Client::builder().build(DebugConnector::with_http_and_closes(http, closes_tx));
 
             let req = Request::builder()
                 .uri(&*format!("http://{}/a", addr))
@@ -1403,10 +1395,8 @@ mod dispatch_impl {
         let mut http = HttpConnector::new();
         http.set_timer(TokioTimer);
         let res = {
-            let client = Client::builder().build(DebugConnector::with_http_and_closes(
-                http,
-                closes_tx,
-            ));
+            let client =
+                Client::builder().build(DebugConnector::with_http_and_closes(http, closes_tx));
 
             let req = Request::builder()
                 .uri(&*format!("http://{}/a", addr))
@@ -1503,10 +1493,7 @@ mod dispatch_impl {
 
         let mut http = HttpConnector::new();
         http.set_timer(TokioTimer);
-        let client = Client::builder().build(DebugConnector::with_http_and_closes(
-            http,
-            closes_tx,
-        ));
+        let client = Client::builder().build(DebugConnector::with_http_and_closes(http, closes_tx));
 
         let req = Request::builder()
             .uri(&*format!("http://{}/a", addr))
@@ -1997,7 +1984,9 @@ mod dispatch_impl {
         connector.alpn_h2 = true;
         let connects = connector.connects.clone();
 
-        let client = Client::builder().timer(TokioTimer).build::<_, ::hyper::Body>(connector);
+        let client = Client::builder()
+            .timer(TokioTimer)
+            .build::<_, ::hyper::Body>(connector);
 
         rt.spawn(async move {
             let (socket, _addr) = listener.accept().await.expect("accept");

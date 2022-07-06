@@ -843,7 +843,7 @@ mod tests {
             },
             &Exec::Default,
             //&Tim::Timer(Arc::new(TokioTimer)),
-            &Tim::Default
+            &Tim::None
         );
         pool.no_timer();
         pool
@@ -889,7 +889,7 @@ mod tests {
 
         drop(pooled);
         //Tim::Timer(Arc::new(TokioTimer)).sleep(pool.locked().timeout.unwrap()).await;
-        Tim::Default.sleep(pool.locked().timeout.unwrap()).await;
+        Tim::None.sleep(pool.locked().timeout.unwrap()).await;
         let mut checkout = pool.checkout(key);
         let poll_once = PollOnce(&mut checkout);
         let is_not_ready = poll_once.await.is_none();
@@ -912,7 +912,7 @@ mod tests {
         );
 
         //Tim::Timer(Arc::new(TokioTimer)).sleep(pool.locked().timeout.unwrap()).await;
-        Tim::Default.sleep(pool.locked().timeout.unwrap()).await;
+        Tim::None.sleep(pool.locked().timeout.unwrap()).await;
 
         let mut checkout = pool.checkout(key.clone());
         let poll_once = PollOnce(&mut checkout);
@@ -950,7 +950,7 @@ mod tests {
             },
             &Exec::Default,
             //&Tim::Timer(Arc::new(TokioTimer)),
-            &Tim::Default
+            &Tim::None
         );
 
         let key = host_key("foo");
@@ -967,7 +967,7 @@ mod tests {
         // Actually sleep instead of tokio::time::pause() / tokio::time::advance() because
         // the Durations we use internally may not be tokio::time::Duration.
         //Tim::Timer(Arc::new(TokioTimer)).sleep(Duration::from_millis(30)).await;
-        Tim::Default.sleep(Duration::from_millis(30)).await;
+        Tim::None.sleep(Duration::from_millis(30)).await;
         // Yield so the Interval can reap...
         tokio::task::yield_now().await;
 

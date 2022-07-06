@@ -236,7 +236,7 @@ impl Http {
     pub fn new() -> Http {
         Http {
             exec: Exec::Default,
-            timer: Tim::Default,
+            timer: Tim::None,
             h1_half_close: false,
             h1_keep_alive: true,
             h1_title_case_headers: false,
@@ -583,8 +583,6 @@ impl<E> Http<E> {
     }
 
     /// Set the timer used in background tasks.
-    ///
-    /// Default uses implicit default (like `tokio::spawn`). // TODO: Robert
     pub fn with_timer<M>(self, timer: M) -> Http<E>
     where
         M: Timer + Send + Sync + 'static,
