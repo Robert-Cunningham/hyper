@@ -41,7 +41,8 @@ where
     B: Buf,
     T: Http1Transaction,
 {
-    pub(crate) fn new(io: I) -> Conn<I, B, T> {
+    pub(crate) fn new(io: I, timer: Tim) -> Conn<I, B, T> {
+
         Conn {
             io: Buffered::new(io),
             state: State {
@@ -52,7 +53,7 @@ where
                 method: None,
                 h1_parser_config: ParserConfig::default(),
                 #[cfg(all(feature = "server", feature = "runtime"))]
-                timer: Tim::Default,
+                timer: timer,
                 #[cfg(all(feature = "server", feature = "runtime"))]
                 h1_header_read_timeout: None,
                 #[cfg(all(feature = "server", feature = "runtime"))]
@@ -198,7 +199,7 @@ where
                 cached_headers: &mut self.state.cached_headers,
                 req_method: &mut self.state.method,
                 h1_parser_config: self.state.h1_parser_config.clone(),
-                #[cfg(all(feature = "server", feature = "runtime"))]
+                //#[cfg(all(feature = "server", feature = "runtime"))]
                 timer: self.state.timer.clone(),
                 #[cfg(all(feature = "server", feature = "runtime"))]
                 h1_header_read_timeout: self.state.h1_header_read_timeout,
@@ -1049,9 +1050,13 @@ impl State {
 
 #[cfg(test)]
 mod tests {
+    use crate::rt::Timer;
+
     #[cfg(feature = "nightly")]
     #[bench]
     fn bench_read_head_short(b: &mut ::test::Bencher) {
+        Tim::Default.sleep(Duration::from_micros(30));
+
         use super::*;
         let s = b"GET / HTTP/1.1\r\nHost: localhost:8080\r\n\r\n";
         let len = s.len();
@@ -1059,7 +1064,7 @@ mod tests {
 
         // an empty IO, we'll be skipping and using the read buffer anyways
         let io = tokio_test::io::Builder::new().build();
-        let mut conn = Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(io);
+        let mut conn = Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(io, Tim::Default);
         *conn.io.read_buf_mut() = ::bytes::BytesMut::from(&s[..]);
         conn.state.cached_headers = Some(HeaderMap::with_capacity(2));
 

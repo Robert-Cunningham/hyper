@@ -10,11 +10,15 @@ use hyper::client::HttpConnector;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Client, Request, Response, Server, Version};
 
+
 pub use futures_util::{
     future, FutureExt as _, StreamExt as _, TryFutureExt as _, TryStreamExt as _,
 };
 pub use hyper::{HeaderMap, StatusCode};
 pub use std::net::SocketAddr;
+
+mod tokiort;
+pub use tokiort::TokioTimer;
 
 #[allow(unused_macros)]
 macro_rules! t {
@@ -329,6 +333,7 @@ async fn async_test(cfg: __TestConfig) {
     let connector = HttpConnector::new();
     let client = Client::builder()
         .http2_only(cfg.client_version == 2)
+        .timer(TokioTimer)
         .build::<_, Body>(connector);
 
     let serve_handles = Arc::new(Mutex::new(cfg.server_msgs));
@@ -452,6 +457,7 @@ struct ProxyConfig {
 fn naive_proxy(cfg: ProxyConfig) -> (SocketAddr, impl Future<Output = ()>) {
     let client = Client::builder()
         .http2_only(cfg.version == 2)
+        .timer(TokioTimer)
         .build_http::<Body>();
 
     let dst_addr = cfg.dst;

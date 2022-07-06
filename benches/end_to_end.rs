@@ -10,6 +10,9 @@ use futures_util::future::join_all;
 use hyper::client::HttpConnector;
 use hyper::{body::HttpBody as _, Body, Method, Request, Response, Server};
 
+mod support;
+use support::TokioTimer;
+
 // HTTP1
 
 #[bench]
@@ -292,8 +295,10 @@ impl Opts {
 
         let addr = spawn_server(&rt, &self);
 
-        let connector = HttpConnector::new();
+        let mut connector = HttpConnector::new();
+        connector.set_timer(TokioTimer);
         let client = hyper::Client::builder()
+            .timer(TokioTimer)
             .http2_only(self.http2)
             .http2_initial_stream_window_size(self.http2_stream_window)
             .http2_initial_connection_window_size(self.http2_conn_window)

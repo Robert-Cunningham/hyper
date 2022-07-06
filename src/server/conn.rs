@@ -647,7 +647,7 @@ impl<E> Http<E> {
         #[cfg(feature = "http1")]
         macro_rules! h1 {
             () => {{
-                let mut conn = proto::Conn::new(io);
+                let mut conn = proto::Conn::new(io, self.timer.clone());
                 if !self.h1_keep_alive {
                     conn.disable_keep_alive();
                 }

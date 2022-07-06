@@ -1,5 +1,6 @@
 use std::error::Error as StdError;
 use std::marker::Unpin;
+use std::sync::Arc;
 #[cfg(feature = "runtime")]
 use std::time::Duration;
 
@@ -14,6 +15,7 @@ use tracing::{debug, trace, warn};
 use super::{ping, PipeToSendStream, SendBuf};
 use crate::body::HttpBody;
 use crate::common::exec::ConnStreamExec;
+use crate::common::tim::Tim;
 use crate::common::{date, task, Future, Pin, Poll};
 use crate::ext::Protocol;
 use crate::headers;
@@ -195,7 +197,7 @@ where
     S::Error: Into<Box<dyn StdError + Send + Sync>>,
     B: HttpBody + 'static,
     E: ConnStreamExec<S::Future, B>,
-    M: Timer + Send + Sync + 'static,
+    M: Timer + Send + Sync + Clone + 'static,
 {
     type Output = crate::Result<Dispatched>;
 
@@ -210,7 +212,7 @@ where
                     let mut conn = ready!(Pin::new(hs).poll(cx).map_err(crate::Error::new_h2))?;
                     let ping = if ping_config.is_enabled() {
                         let pp = conn.ping_pong().expect("conn.ping_pong");
-                        Some(ping::channel(pp, ping_config.clone()))
+                        Some(ping::channel(pp, ping_config.clone(), Tim::Timer(Arc::new(me.timer.clone()))))
                     } else {
                         None
                     };

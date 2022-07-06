@@ -89,9 +89,7 @@ where
                 None => {
                     debug!("setting h1 header read timeout timer");
                     *ctx.h1_header_read_timeout_fut =
-                        Some(Box::into_pin(ctx.timer.sleep_until(deadline))) // TODO(robert): Add a `Tim` to every ParseContext
-
-                    //Some(Box::pin(tokio::time::sleep_until(deadline)));
+                        Some(Box::into_pin(ctx.timer.sleep_until(deadline)))
                 }
             }
         }
@@ -1511,9 +1509,11 @@ fn extend(dst: &mut Vec<u8>, data: &[u8]) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use bytes::BytesMut;
 
-    use crate::common::tim::Tim;
+    use crate::common::tim::{Tim};
 
     use super::*;
 

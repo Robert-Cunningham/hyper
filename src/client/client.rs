@@ -12,9 +12,7 @@ use tracing::{debug, trace, warn};
 
 use super::conn;
 use super::connect::{self, sealed::Connect, Alpn, Connected, Connection};
-use super::pool::{
-    self, CheckoutIsClosedError, Key as PoolKey, Pool, Poolable, Pooled, Reservation,
-};
+use super::pool::{self, CheckoutIsClosedError, Key as PoolKey, Pool, Poolable, Pooled, Reservation};
 #[cfg(feature = "tcp")]
 use super::HttpConnector;
 use crate::body::{Body, HttpBody};

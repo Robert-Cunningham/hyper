@@ -130,6 +130,10 @@ impl<R> HttpConnector<R> {
         }
     }
 
+    pub fn set_timer<T: Timer + Send + Sync + 'static>(&mut self, timer: T) {
+        self.timer = Tim::Timer(Arc::new(timer)); 
+    }
+
     /// Option to enforce all `Uri`s have the `http` scheme.
     ///
     /// Enabled by default.
@@ -495,34 +499,29 @@ impl<'a> ConnectingTcp<'a> {
                     preferred: ConnectingTcpRemote::new(
                         preferred_addrs,
                         config.connect_timeout,
-                        timer.clone(),
                     ),
                     fallback: None,
                     config,
                 };
             }
 
-            //let t2 = timer.clone();
-
             ConnectingTcp {
                 preferred: ConnectingTcpRemote::new(
                     preferred_addrs,
                     config.connect_timeout,
-                    timer.clone(),
                 ),
                 fallback: Some(ConnectingTcpFallback {
                     delay: timer.clone().sleep(fallback_timeout),
                     remote: ConnectingTcpRemote::new(
                         fallback_addrs,
                         config.connect_timeout,
-                        timer.clone(),
                     ),
                 }),
                 config,
             }
         } else {
             ConnectingTcp {
-                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout, timer),
+                preferred: ConnectingTcpRemote::new(remote_addrs, config.connect_timeout, /*timer*/),
                 fallback: None,
                 config,
             }
@@ -538,17 +537,17 @@ struct ConnectingTcpFallback {
 struct ConnectingTcpRemote {
     addrs: dns::SocketAddrs,
     connect_timeout: Option<Duration>,
-    timer: Tim,
+    //timer: Tim,
 }
 
 impl ConnectingTcpRemote {
-    fn new(addrs: dns::SocketAddrs, connect_timeout: Option<Duration>, timer: Tim) -> Self {
+    fn new(addrs: dns::SocketAddrs, connect_timeout: Option<Duration>/* , timer: Tim */) -> Self {
         let connect_timeout = connect_timeout.map(|t| t / (addrs.len() as u32));
 
         Self {
             addrs,
             connect_timeout,
-            timer,
+            //timer,
         }
     }
 }
