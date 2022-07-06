@@ -19,7 +19,7 @@ pub trait Executor<Fut> {
     fn execute(&self, fut: Fut);
 }
 
-pub trait Timer {
+pub trait Timer : std::fmt::Debug {
     fn sleep(&self, duration: Duration) -> Box<dyn Sleep + Unpin>;
     fn sleep_until(&self, deadline: Instant) -> Box<dyn Sleep + Unpin>;
     fn interval(&self, period: Duration) -> Box<dyn Interval>;

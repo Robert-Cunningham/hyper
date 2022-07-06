@@ -8,6 +8,7 @@ use futures_core::Future;
 
 use crate::rt::{Interval, Sleep, Timer};
 
+/*
 // Either the user provides a timer for background tasks, or we use
 // `tokio::timer`.
 #[derive(Clone)]
@@ -15,37 +16,42 @@ pub enum Tim { // might swap this into an option<arc<dyn timer + send _ sync>>
     None,
     Timer(Arc<dyn Timer + Send + Sync>),
 }
+*/
 
-impl fmt::Debug for Tim {
+pub type Tim = Option<Arc<dyn Timer + Send + Sync>>;
+
+/*
+impl fmt::Debug for Timer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Tim").finish()
     }
 }
+*/
 
 impl Timer for Tim {
     fn sleep(&self, duration: Duration) -> Box<dyn Sleep + Unpin> {
         match *self {
-            Tim::None => {
+            None => {
                 panic!("You must supply a timer.")
             }
-            Tim::Timer(ref t) => t.sleep(duration),
+            Some(ref t) => t.sleep(duration),
         }
     }
     fn sleep_until(&self, deadline: Instant) -> Box<dyn Sleep + Unpin> {
         match *self {
-            Tim::None => {
+            None => {
                 panic!("You must supply a timer.")
             }
-            Tim::Timer(ref t) => t.sleep_until(deadline),
+            Some(ref t) => t.sleep_until(deadline),
         }
     }
 
     fn interval(&self, period: Duration) -> Box<dyn Interval> {
         match *self {
-            Tim::None => {
+            None => {
                 panic!("You must supply a timer.")
             }
-            Tim::Timer(ref t) => t.interval(period),
+            Some(ref t) => t.interval(period),
         }
     }
 }

@@ -737,7 +737,7 @@ mod tests {
             let parse_ctx = ParseContext {
                 cached_headers: &mut None,
                 req_method: &mut None,
-                timer: Tim::None,
+                timer: None,
                 h1_parser_config: Default::default(),
                 #[cfg(feature = "runtime")]
                 h1_header_read_timeout: None,

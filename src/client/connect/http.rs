@@ -126,12 +126,12 @@ impl<R> HttpConnector<R> {
                 recv_buffer_size: None,
             }),
             resolver,
-            timer: Tim::None,
+            timer: None,
         }
     }
 
     pub fn set_timer<T: Timer + Send + Sync + 'static>(&mut self, timer: T) {
-        self.timer = Tim::Timer(Arc::new(timer)); 
+        self.timer = Some(Arc::new(timer)); 
     }
 
     /// Option to enforce all `Uri`s have the `http` scheme.
@@ -968,7 +968,7 @@ mod tests {
                         recv_buffer_size: None,
                     };
                     let connecting_tcp =
-                        ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg, Tim::None);
+                        ConnectingTcp::new(dns::SocketAddrs::new(addrs), &cfg, None);
                     let start = Instant::now();
                     Ok::<_, ConnectError>((start, ConnectingTcp::connect(connecting_tcp).await?))
                 })

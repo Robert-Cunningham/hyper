@@ -1055,7 +1055,7 @@ mod tests {
     #[cfg(feature = "nightly")]
     #[bench]
     fn bench_read_head_short(b: &mut ::test::Bencher) {
-        Tim::None.sleep(Duration::from_micros(30));
+        tokio::time::sleep(Duration::from_micros(30));
 
         use super::*;
         let s = b"GET / HTTP/1.1\r\nHost: localhost:8080\r\n\r\n";
@@ -1064,7 +1064,7 @@ mod tests {
 
         // an empty IO, we'll be skipping and using the read buffer anyways
         let io = tokio_test::io::Builder::new().build();
-        let mut conn = Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(io, Tim::None);
+        let mut conn = Conn::<_, bytes::Bytes, crate::proto::h1::ServerTransaction>::new(io, None);
         *conn.io.read_buf_mut() = ::bytes::BytesMut::from(&s[..]);
         conn.state.cached_headers = Some(HeaderMap::with_capacity(2));
 

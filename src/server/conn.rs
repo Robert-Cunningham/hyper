@@ -236,7 +236,7 @@ impl Http {
     pub fn new() -> Http {
         Http {
             exec: Exec::Default,
-            timer: Tim::None,
+            timer: None,
             h1_half_close: false,
             h1_keep_alive: true,
             h1_title_case_headers: false,
@@ -589,7 +589,7 @@ impl<E> Http<E> {
     {
         Http {
             exec: self.exec,
-            timer: Tim::Timer(Arc::new(timer)),
+            timer: Some(Arc::new(timer)),
             h1_half_close: self.h1_half_close,
             h1_keep_alive: self.h1_keep_alive,
             h1_title_case_headers: self.h1_title_case_headers,

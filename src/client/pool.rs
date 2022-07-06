@@ -842,8 +842,7 @@ mod tests {
                 max_idle_per_host: max_idle,
             },
             &Exec::Default,
-            //&Tim::Timer(Arc::new(TokioTimer)),
-            &Tim::None
+            &None
         );
         pool.no_timer();
         pool
@@ -888,8 +887,8 @@ mod tests {
         let pooled = pool.pooled(c(key.clone()), Uniq(41));
 
         drop(pooled);
-        //Tim::Timer(Arc::new(TokioTimer)).sleep(pool.locked().timeout.unwrap()).await;
-        Tim::None.sleep(pool.locked().timeout.unwrap()).await;
+        //Some(Arc::new(TokioTimer)).sleep(pool.locked().timeout.unwrap()).await;
+        tokio::time::sleep(pool.locked().timeout.unwrap()).await;
         let mut checkout = pool.checkout(key);
         let poll_once = PollOnce(&mut checkout);
         let is_not_ready = poll_once.await.is_none();
@@ -911,8 +910,8 @@ mod tests {
             Some(3)
         );
 
-        //Tim::Timer(Arc::new(TokioTimer)).sleep(pool.locked().timeout.unwrap()).await;
-        Tim::None.sleep(pool.locked().timeout.unwrap()).await;
+        //Some(Arc::new(TokioTimer)).sleep(pool.locked().timeout.unwrap()).await;
+        tokio::time::sleep(pool.locked().timeout.unwrap()).await;
 
         let mut checkout = pool.checkout(key.clone());
         let poll_once = PollOnce(&mut checkout);
@@ -949,8 +948,8 @@ mod tests {
                 max_idle_per_host: std::usize::MAX,
             },
             &Exec::Default,
-            //&Tim::Timer(Arc::new(TokioTimer)),
-            &Tim::None
+            //&Some(Arc::new(TokioTimer)),
+            &None
         );
 
         let key = host_key("foo");
@@ -966,8 +965,8 @@ mod tests {
 
         // Actually sleep instead of tokio::time::pause() / tokio::time::advance() because
         // the Durations we use internally may not be tokio::time::Duration.
-        //Tim::Timer(Arc::new(TokioTimer)).sleep(Duration::from_millis(30)).await;
-        Tim::None.sleep(Duration::from_millis(30)).await;
+        //Some(Arc::new(TokioTimer)).sleep(Duration::from_millis(30)).await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
         // Yield so the Interval can reap...
         tokio::task::yield_now().await;
 

@@ -557,7 +557,7 @@ impl Builder {
     pub fn new() -> Builder {
         Builder {
             exec: Exec::Default,
-            timer: Tim::None,
+            timer: None,
             h09_responses: false,
             h1_writev: None,
             h1_read_buf_exact_size: None,
@@ -591,7 +591,7 @@ impl Builder {
     where
         T: Timer + Send + Sync + 'static,
     {
-        self.timer = Tim::Timer(Arc::new(timer));
+        self.timer = Some(Arc::new(timer));
         self
     }
 
