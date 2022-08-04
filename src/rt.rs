@@ -1,14 +1,11 @@
 //! Runtime components
 //!
-//! By default, hyper includes the [tokio](https://tokio.rs) runtime.
-//!
-//! If the `runtime` feature is disabled, the types in this module can be used
-//! to plug in other runtimes.
+//! The types in this module can be used to supply a runtime, like tokio.
 
 use std::{
     pin::Pin,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::{Duration, Instant}, any::Any,
 };
 
 use futures_core::Future;
@@ -29,21 +26,11 @@ pub trait Timer : std::fmt::Debug {
 
     /// An analogue of tokio::time::interval.
     fn interval(&self, period: Duration) -> Box<dyn Interval>;
-}
 
-/*
-impl Sleep for HasSleep {
-    fn is_elapsed(&self) -> bool {
-        self.sleep.is_elapsed()
-    }
-    fn deadline(&self) -> Instant {
-        self.sleep.deadline().into()
-    }
-    fn reset(mut self: Pin<&mut Self>, deadline: Instant) {
-        self.sleep.as_mut().reset(deadline.into())
-    }
+    // An analogue of tokio::time::timeout.
+    //fn timeout(&self, duration: Duration, future: Box<dyn Future<Output = Box<dyn Any>> + Unpin>) -> Box<tokio::time::Timeout<Box<dyn Any>>>;
+    // I don't love the Box<dyn Any>, but I don't know a better way to implement this while keeping Timer object-safe.
 }
-*/
 
 /// The generic version of tokio::time::Sleep, which itself is the output of tokio::time::sleep
 pub trait Sleep: Send + Sync + Unpin + Future<Output = ()> {

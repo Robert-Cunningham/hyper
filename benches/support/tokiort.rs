@@ -3,7 +3,7 @@
 use std::{
     pin::Pin,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::{Duration, Instant}
 };
 
 use futures_util::Future;
@@ -34,6 +34,19 @@ impl Timer for TokioTimer {
     }
 
     /*
+    fn timeout(&self, duration: Duration, future: Box<dyn Future<Output = Box<dyn Any>> + Unpin>) -> Box<tokio::time::Timeout<Box<dyn Any>>> {
+        let out = tokio::time::timeout(duration, *future);
+        out
+
+        /*
+        Box::new(TokioInterval {
+            inner: tokio::time::interval(period),
+        })
+        */
+    }
+    */
+
+    /*
     fn timeout<O, T: Future<Output = O>>(duration: Duration, future: T) -> Box<dyn Timeout<O> + Unpin> {
         tokio::time::timeout(duration, future)
     }
@@ -51,8 +64,8 @@ impl Interval for TokioInterval {
         raw.map(|a| a.into_std())
     }
 }
-
 /*
+
 struct TokioTimeout<T> {
     inner: Pin<Box<tokio::time::Timeout<T>>>,
 }

@@ -15,7 +15,7 @@ use pin_project_lite::pin_project;
 use tokio::net::{TcpSocket, TcpStream};
 use tracing::{debug, trace, warn};
 
-use crate::common::tim::Tim;
+use crate::common::tim::{Tim, timeout};
 use crate::rt::{Sleep, Timer};
 
 use super::dns::{self, resolve, GaiResolver, Resolve};
@@ -684,7 +684,7 @@ fn connect(
     let connect = socket.connect(*addr);
     Ok(async move {
         match connect_timeout {
-            Some(dur) => match tokio::time::timeout(dur, connect).await { // TODO(robert)
+            Some(dur) => match timeout(dur, connect).await { // TODO(robert)
                 Ok(Ok(s)) => Ok(s),
                 Ok(Err(e)) => Err(e),
                 Err(e) => Err(io::Error::new(io::ErrorKind::TimedOut, e)),

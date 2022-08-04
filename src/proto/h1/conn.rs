@@ -199,7 +199,7 @@ where
                 cached_headers: &mut self.state.cached_headers,
                 req_method: &mut self.state.method,
                 h1_parser_config: self.state.h1_parser_config.clone(),
-                //#[cfg(all(feature = "server", feature = "runtime"))]
+                #[cfg(all(feature = "server", feature = "runtime"))]
                 timer: self.state.timer.clone(),
                 #[cfg(all(feature = "server", feature = "runtime"))]
                 h1_header_read_timeout: self.state.h1_header_read_timeout,
